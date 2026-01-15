@@ -5,6 +5,8 @@
  *
  * h3xxx atmel micro companion support, battery subdevice
  * based on previous kernel 2.4 version
+ * Author : Alessandro Gardich <gremlin@gremlin.it>
+ * Author : Linus Walleij <linus.walleij@linaro.org>
  *
  */
 

@@ -205,6 +205,7 @@ static void sprd_codec_audif_clk_enable(struct snd_soc_codec *codec, int en)
 
 	snd_soc_update_bits(codec, SOC_REG(AUD_CFGA_AUDIF_CTL0),
 		BIT_AUDIF_5P_MODE, 0);
+	/* yintang: for temp test */
 	sprd_codec_audif_et_en(codec, en);
 }
 

@@ -9,6 +9,10 @@
  * driver.
  *
  * License Terms: GNU General Public License v2
+ * Author:
+ *	Johan Palsson <johan.palsson@stericsson.com>
+ *	Karl Komierowski <karl.komierowski@stericsson.com>
+ *	Arun R Murthy <arun.murthy@stericsson.com>
  */
 
 #include <linux/init.h>

@@ -43,6 +43,10 @@ static int default_dcdc_volt_update(struct regmap *map, struct reg_info *regs,
 		u_volt += pm->per_step;
 
 	val = (u_volt - pm->volt_base) / pm->per_step;
+	if((val >> 6) == 0) {
+		val = val | (0x1 << 6);
+		pr_info("default_dcdc_volt_update val = %x\n",val);
+	}
 
 	return regmap_update_bits(map, reg, msk << off, val << off);
 }

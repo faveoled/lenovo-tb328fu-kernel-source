@@ -352,6 +352,8 @@ static int btwf_dump_mem(void)
 	mdev_ring = mdbg_dev->ring_dev->ring;
 	mdbg_hold_cpu();
 	msleep(100);
+	if (wcn_platform_chip_type() == WCN_PLATFORM_TYPE_SHARKLE)
+		wcn_check_btwfcp_dcache_flushed();
 	mdbg_ring_reset(mdev_ring);
 	mdbg_atcmd_clean();
 	if (wcn_fill_dump_head_info(s_wcn_dump_regs,

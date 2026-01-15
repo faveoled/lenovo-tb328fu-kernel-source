@@ -2,7 +2,7 @@
  *  sprd-compr.c - ASoC Spreadtrum Compress Platform driver
  *
  *  Copyright (C) 2010-2020 Spreadtrum Communications Inc.
- *  Author:
+ *  Author: yintang.ren
  *  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
  *
  *  This program is free software; you can redistribute it and/or modify
@@ -390,6 +390,7 @@ exit:
 	return 0;
 }
 #endif
+/* yintang: to be confirmed */
 int sprd_compr_configure_dsp(struct sprd_compr_rtd *srtd)
 {
 	return 0;
@@ -1910,6 +1911,8 @@ static int sprd_platform_compr_get_codec_caps(struct snd_compr_stream *cstream,
 					struct snd_compr_codec_caps *codec)
 {
 	ADEBUG();
+
+	/* yintang:how to get codec caps, to be confirmed */
 
 	switch (codec->codec) {
 	case SND_AUDIOCODEC_MP3:

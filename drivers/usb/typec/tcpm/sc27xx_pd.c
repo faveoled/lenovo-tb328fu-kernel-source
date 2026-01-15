@@ -5,10 +5,12 @@
 #include <linux/extcon.h>
 #include <linux/interrupt.h>
 #include <linux/kernel.h>
+#include <linux/mfd/syscon.h>
 #include <linux/module.h>
 #include <linux/mutex.h>
 #include <linux/nvmem-consumer.h>
 #include <linux/of.h>
+#include <linux/of_device.h>
 #include <linux/platform_device.h>
 #include <linux/regmap.h>
 #include <linux/regulator/consumer.h>
@@ -16,14 +18,19 @@
 #include <linux/usb/typec.h>
 #include <linux/usb/tcpm.h>
 #include <linux/usb/pd.h>
+#include <linux/usb/typec_dp.h>
 
 /* PMIC global registers definition */
 #define SC27XX_MODULE_EN		0x1808
-#define SC27XX_TYPEC_PD_EN		BIT(13)
 #define SC27XX_ARM_CLK_EN0		0x180c
 #define SC27XX_RTC_CLK_EN0		0x1810
-#define SC27XX_CLK_PD_EN		BIT(9)
 #define SC27XX_XTL_WAIT_CTRL0		0x1b78
+#define UMP9620_MODULE_EN		0x2008
+#define UMP9620_ARM_CLK_EN0		0x200c
+#define UMP9620_RTC_CLK_EN0		0x2010
+#define UMP9620_XTL_WAIT_CTRL0		0x2378
+#define SC27XX_TYPEC_PD_EN		BIT(13)
+#define SC27XX_CLK_PD_EN		BIT(9)
 #define SC27XX_XTL_EN			BIT(8)
 
 /* Typec controller registers definition */
@@ -136,6 +143,7 @@
 #define SC27XX_PD_RX_FIFO_OVERFLOW_FLAG	BIT(10)
 
 /* Bits definitions for SC27XX_PD_STS1 register */
+#define SC27XX_PD_RX_DATA_NUM_MASK	GENMASK(8, 0)
 #define SC27XX_PD_RX_EMPTY		BIT(13)
 
 /* Bits definitions for SC27XX_INT_CLR register */
@@ -203,6 +211,24 @@
 #define SC27XX_PD_RDY_TIMEOUT		2000
 #define SC27XX_PD_POLL_RAW_STATUS	50
 
+/* pmic compatible */
+#define SC2730_RC_EFUSE_SHIFT		9
+#define SC2730_REF_EFUSE_SHIFT		12
+#define SC2730_DELTA_EFUSE_SHIFT	7
+
+#define UMP9620_RC_EFUSE_SHIFT		5
+#define UMP9620_REF_EFUSE_SHIFT		6
+#define UMP9620_DELTA_EFUSE_SHIFT	9
+
+/* soc compatible */
+#define UMS9620_MASK_AON_APB_R2G_ANALOG_BB_TOP_SINDRV_ENA	0x0020
+#define UMS9620_REG_AON_APB_MIPI_CSI_POWER_CTRL			0x0350
+
+#define SC27XX_PD_SHIFT(n)		(n)
+
+#define PMIC_SC2730			1
+#define PMIC_UMP9620			2
+
 enum sc27xx_state {
 	SC27XX_DETACHED_SNK,
 	SC27XX_ATTACHWAIT_SNK,
@@ -213,6 +239,45 @@ enum sc27xx_state {
 	SC27XX_POWERED_CABLE,
 };
 
+struct sc27xx_pd_variant_data {
+	u32 efuse_rc_shift;
+	u32 efuse_ref_shift;
+	u32 efuse_delta_shift;
+	u32 id;
+	u32 module_en;
+	u32 arm_clk_en0;
+	u32 rtc_clk_en0;
+	u32 xtl_wait_ctrl0;
+	u32 aon_apb_r2g_analog_bb_top_sindrv_ena;
+	u32 reg_aon_apb_mipi_csi_power_ctrl;
+};
+
+static const struct sc27xx_pd_variant_data sc2730_data = {
+	.efuse_rc_shift = SC2730_RC_EFUSE_SHIFT,
+	.efuse_ref_shift = SC2730_REF_EFUSE_SHIFT,
+	.efuse_delta_shift = SC2730_DELTA_EFUSE_SHIFT,
+	.id = PMIC_SC2730,
+	.module_en = SC27XX_MODULE_EN,
+	.arm_clk_en0 = SC27XX_ARM_CLK_EN0,
+	.rtc_clk_en0 = SC27XX_RTC_CLK_EN0,
+	.xtl_wait_ctrl0 = SC27XX_XTL_WAIT_CTRL0,
+};
+
+static const struct sc27xx_pd_variant_data ump9620_data = {
+	.efuse_rc_shift = UMP9620_RC_EFUSE_SHIFT,
+	.efuse_ref_shift = UMP9620_REF_EFUSE_SHIFT,
+	.efuse_delta_shift = UMP9620_DELTA_EFUSE_SHIFT,
+	.id = PMIC_UMP9620,
+	.module_en = UMP9620_MODULE_EN,
+	.arm_clk_en0 = UMP9620_ARM_CLK_EN0,
+	.rtc_clk_en0 = UMP9620_RTC_CLK_EN0,
+	.xtl_wait_ctrl0 = UMP9620_XTL_WAIT_CTRL0,
+	.aon_apb_r2g_analog_bb_top_sindrv_ena =
+		UMS9620_MASK_AON_APB_R2G_ANALOG_BB_TOP_SINDRV_ENA,
+	.reg_aon_apb_mipi_csi_power_ctrl =
+		UMS9620_REG_AON_APB_MIPI_CSI_POWER_CTRL,
+};
+
 struct sc27xx_pd {
 	struct device *dev;
 	struct extcon_dev *edev;
@@ -220,13 +285,17 @@ struct sc27xx_pd {
 	struct notifier_block extcon_nb;
 	struct tcpm_port *tcpm_port;
 	struct delayed_work typec_detect_work;
+	struct delayed_work  read_msg_work;
+	struct workqueue_struct *pd_wq;
 	struct regmap *regmap;
+	struct regmap *aon_apb;
 	struct tcpc_dev tcpc;
 	struct mutex lock;
 	struct regulator *vbus;
 	struct regulator *vconn;
 	struct tcpc_config config;
 	struct work_struct pd_work;
+	const struct sc27xx_pd_variant_data *var_data;
 	enum typec_cc_polarity cc_polarity;
 	enum typec_cc_status cc1;
 	enum typec_cc_status cc2;
@@ -237,6 +306,7 @@ struct sc27xx_pd {
 	bool constructed;
 	bool vconn_on;
 	bool vbus_on;
+	bool charge_on;
 	bool vbus_present;
 	u32 base;
 	u32 typec_base;
@@ -244,6 +314,10 @@ struct sc27xx_pd {
 	u32 delta_cal;
 	u32 ref_cal;
 	int msg_flag;
+	int need_retry;
+	bool typec_online;
+	bool pd_attached;
+	bool shutdown_flag;
 };
 
 static inline struct sc27xx_pd *tcpc_to_sc27xx_pd(struct tcpc_dev *tcpc)
@@ -251,22 +325,61 @@ static inline struct sc27xx_pd *tcpc_to_sc27xx_pd(struct tcpc_dev *tcpc)
 	return container_of(tcpc, struct sc27xx_pd, tcpc);
 }
 
+static int sc27xx_pd_set_aon_clock(struct sc27xx_pd *pd, bool on)
+{
+	int ret;
+	u32 mask, reg;
+
+	if (!pd->aon_apb) {
+		dev_warn(pd->dev, "aon apb NULL\n");
+		return 0;
+	}
+
+	mask = pd->var_data->aon_apb_r2g_analog_bb_top_sindrv_ena;
+	reg = pd->var_data->reg_aon_apb_mipi_csi_power_ctrl;
+
+	if (on) {
+		ret = regmap_update_bits(pd->aon_apb, reg, mask, mask);
+		if (ret)
+			return ret;
+	} else {
+		ret = regmap_update_bits(pd->aon_apb, reg, mask, ~mask);
+		if (ret)
+			return ret;
+	}
+
+	return 0;
+}
+
 static int sc27xx_pd_clk_cfg(struct sc27xx_pd *pd)
 {
 	int ret;
 
-	ret = regmap_update_bits(pd->regmap, SC27XX_MODULE_EN,
+	ret = regmap_update_bits(pd->regmap, pd->var_data->module_en,
 				 SC27XX_TYPEC_PD_EN, SC27XX_TYPEC_PD_EN);
 	if (ret)
 		return ret;
 
-	ret = regmap_update_bits(pd->regmap, SC27XX_ARM_CLK_EN0,
+	ret = regmap_update_bits(pd->regmap, pd->var_data->arm_clk_en0,
 				 SC27XX_CLK_PD_EN, SC27XX_CLK_PD_EN);
 	if (ret)
 		return ret;
 
-	return regmap_update_bits(pd->regmap, SC27XX_XTL_WAIT_CTRL0,
+	return regmap_update_bits(pd->regmap, pd->var_data->xtl_wait_ctrl0,
 				  SC27XX_XTL_EN, SC27XX_XTL_EN);
+}
+
+static int sc27xx_pd_disable_clk(struct sc27xx_pd *pd)
+{
+	int ret;
+
+	ret = regmap_update_bits(pd->regmap, pd->var_data->module_en,
+				 SC27XX_TYPEC_PD_EN, 0);
+	if (ret)
+		return ret;
+
+	return regmap_update_bits(pd->regmap, pd->var_data->arm_clk_en0,
+				 SC27XX_CLK_PD_EN, 0);
 }
 
 static int sc27xx_pd_start_drp_toggling(struct tcpc_dev *tcpc,
@@ -296,14 +409,50 @@ static int sc27xx_pd_get_cc(struct tcpc_dev *tcpc,
 static int sc27xx_pd_set_vbus(struct tcpc_dev *tcpc, bool on, bool charge)
 {
 	struct sc27xx_pd *pd = tcpc_to_sc27xx_pd(tcpc);
+	int ret;
 
 	mutex_lock(&pd->lock);
 	if (pd->vbus_on == on) {
 		dev_info(pd->dev, "vbus is already %s\n", on ? "On" : "Off");
 	} else {
+		if (!pd->vbus) {
+			pd->vbus = devm_regulator_get_optional(pd->dev, "vbus");
+			if (IS_ERR(pd->vbus)) {
+				dev_err(pd->dev, "failed to get vbus supply\n");
+				pd->vbus = NULL;
+				goto set_vbus_done;
+			}
+		}
+
+		if (on) {
+			if (!regulator_is_enabled(pd->vbus)) {
+				ret = regulator_enable(pd->vbus);
+				if (ret)  {
+					dev_err(pd->dev, "cannot enable vbus regulator, ret=%d\n", ret);
+					goto set_vbus_done;
+				}
+			}
+		} else {
+			if (regulator_is_enabled(pd->vbus)) {
+				ret = regulator_disable(pd->vbus);
+				if (ret)  {
+					dev_err(pd->dev, "cannot disable vbus regulator, ret=%d\n", ret);
+					goto set_vbus_done;
+				}
+			}
+		}
+
 		pd->vbus_on = on;
 		dev_info(pd->dev, "vbus := %s", on ? "On" : "Off");
 	}
+
+	if (pd->charge_on == charge)
+		dev_info(pd->dev,  "charge is already %s\n",
+			    charge ? "On" : "Off");
+	else
+		pd->charge_on = charge;
+
+set_vbus_done:
 	mutex_unlock(&pd->lock);
 
 	return 0;
@@ -363,23 +512,26 @@ static int sc27xx_pd_set_vconn(struct tcpc_dev *tcpc, bool enable)
 {
 	struct sc27xx_pd *pd = tcpc_to_sc27xx_pd(tcpc);
 	int ret = 0;
-	u32 mask;
+
+	if (!pd->vconn) {
+		dev_warn(pd->dev, "vconn NULL!!!\n");
+		return -EINVAL;
+	}
 
 	mutex_lock(&pd->lock);
+
 	if (pd->vconn_on == enable) {
 		dev_info(pd->dev, "vconn already %s\n", enable ? "On" : "Off");
 		goto unlock;
 	}
 
-	mask = ((pd->cc_polarity == TYPEC_POLARITY_CC1) ?
-		SC27XX_TYPEC_SW_SWITCH(0x3) : SC27XX_TYPEC_SW_SWITCH(0x2));
-
 	if (enable)
 		ret = regulator_enable(pd->vconn);
 	else
-		regulator_disable(pd->vconn);
+		ret = regulator_disable(pd->vconn);
 
-	pd->vconn_on = enable;
+	if (!ret)
+		pd->vconn_on = enable;
 
 unlock:
 	mutex_unlock(&pd->lock);
@@ -454,39 +606,45 @@ static int sc27xx_pd_set_rx(struct tcpc_dev *tcpc, bool on)
 {
 	struct sc27xx_pd *pd = tcpc_to_sc27xx_pd(tcpc);
 	u32 mask = SC27XX_PD_CTL_EN, mask1 = SC27XX_PD_PKG_RV_EN;
+	u32 mask2 = SC27XX_PD_RX_AUTO_GOOD_CRC;
 	int ret;
 
+	if (pd->shutdown_flag)
+		return 0;
+
 	mutex_lock(&pd->lock);
-	ret = sc27xx_pd_rx_flush(pd);
-	if (ret < 0)
-		goto done;
-
-	ret = sc27xx_pd_tx_flush(pd);
-	if (ret < 0)
-		goto done;
-
 	ret = sc27xx_pd_reset(pd);
 	if (ret < 0)
 		goto done;
 
 	if (on) {
-		ret = regmap_update_bits(pd->regmap, pd->base + SC27XX_PD_CFG0,
-					 mask, mask);
-		if (ret < 0)
-			goto done;
-
 		ret = regmap_update_bits(pd->regmap, pd->base + SC27XX_INT_EN,
 					 mask1, mask1);
 		if (ret < 0)
 			goto done;
+
+		ret = regmap_update_bits(pd->regmap, pd->base + SC27XX_PD_CFG1,
+					 mask2, mask2);
+		if (ret < 0)
+			goto done;
+
+		ret = regmap_update_bits(pd->regmap, pd->base + SC27XX_PD_CFG0,
+					 mask, mask);
+		if (ret < 0)
+			goto done;
 	} else {
+		ret = regmap_update_bits(pd->regmap, pd->base + SC27XX_PD_CFG0,
+					 mask, ~mask);
+		if (ret < 0)
+			goto done;
+
 		ret = regmap_update_bits(pd->regmap, pd->base + SC27XX_INT_EN,
 					 mask1, ~mask1);
 		if (ret < 0)
 			goto done;
 
-		ret = regmap_update_bits(pd->regmap, pd->base + SC27XX_PD_CFG0,
-					 mask, ~mask);
+		ret = regmap_update_bits(pd->regmap, pd->base + SC27XX_PD_CFG1,
+					 mask2, ~mask2);
 		if (ret < 0)
 			goto done;
 	}
@@ -500,7 +658,7 @@ done:
 static int sc27xx_pd_tx_msg(struct sc27xx_pd *pd, const struct pd_message *msg)
 {
 	u16 header;
-	u32 data_obj_num, data[PD_MAX_PAYLOAD * 2];
+	u32 data_obj_num, data[PD_MAX_PAYLOAD * 2] = {0};
 	int i, ret;
 
 	ret = sc27xx_pd_tx_flush(pd);
@@ -571,18 +729,48 @@ static int sc27xx_pd_transmit(struct tcpc_dev *tcpc,
 static int sc27xx_pd_read_message(struct sc27xx_pd *pd, struct pd_message *msg)
 {
 	int ret, i;
-	u32 data[PD_MAX_PAYLOAD * 2];
-	u32 data_obj_num, spec, header;
+	u32 data[PD_MAX_PAYLOAD * 2] = {0};
+	u32 data_obj_num, spec, reg_val = 0, header = 0, type;
+	bool vendor_define = false, source_capabilities = false;
+	bool data_request = false;
 
 	ret = regmap_read(pd->regmap, pd->base + SC27XX_PD_RX_BUF,
 			  &header);
 	if (ret < 0)
 		return ret;
 
+	ret = regmap_read(pd->regmap, pd->base + SC27XX_PD_STS1, &reg_val);
+	if (ret < 0)
+		return ret;
+
+	if (pd->need_retry) {
+		pd->need_retry = false;
+		cancel_delayed_work_sync(&pd->read_msg_work);
+	}
+	reg_val &= SC27XX_PD_RX_DATA_NUM_MASK;
+
 	header &= SC27XX_TX_RX_BUF_MASK;
 	msg->header = cpu_to_le16(header);
 	data_obj_num = pd_header_cnt_le(msg->header);
 	spec = pd_header_rev_le(msg->header);
+	type = pd_header_type_le(msg->header);
+
+	if (msg->header & PD_HEADER_EXT_HDR)
+		vendor_define = false;
+	else if (data_obj_num && (type == PD_DATA_VENDOR_DEF))
+		vendor_define = true;
+	else if (data_obj_num && (type == PD_DATA_SOURCE_CAP))
+		source_capabilities = true;
+	else if (data_obj_num && (type == PD_DATA_REQUEST))
+		data_request = true;
+
+	if ((data_obj_num * 2 + 1) < reg_val && !vendor_define &&
+		!source_capabilities && !data_request) {
+		pd->need_retry = true;
+		queue_delayed_work(pd->pd_wq,
+				   &pd->read_msg_work,
+				   msecs_to_jiffies(5));
+	}
 
 	if (spec == 1) {
 		ret = regmap_update_bits(pd->regmap, pd->base + SC27XX_PD_CFG1,
@@ -647,12 +835,15 @@ static int sc27xx_pd_read_message(struct sc27xx_pd *pd, struct pd_message *msg)
 
 static int sc27xx_pd_rc_ref_cal(struct sc27xx_pd *pd)
 {
-	u32 vol = (pd->rc_cal >> 9)&0xfe;
-	u32 pd_ref = (pd->ref_cal >> 12)&0x7;
-	u32 val;
-	u32 cfg2_bit7, cfg0_vth, cfg0_vtl, typec_ibis;
+	u32 vol = 0;
+	u32 pd_ref = 0;
+	u32 val = 0;
+	u32 cfg2_bit7, cfg0_vth = 0, cfg0_vtl = 0, typec_ibis = 0;
 	u32 cfg0, cfg2, cfg0_mask, cfg2_mask;
 	int ret;
+
+	vol = (pd->rc_cal >> SC27XX_PD_SHIFT(pd->var_data->efuse_rc_shift)) & 0x7f;
+	pd_ref = (pd->ref_cal >> SC27XX_PD_SHIFT(pd->var_data->efuse_ref_shift)) & 0x7;
 
 	/*
 	 * According to the datasheet, depending on the calibration
@@ -731,7 +922,7 @@ static int sc27xx_pd_rc_ref_cal(struct sc27xx_pd *pd)
 	if (ret < 0)
 		return ret;
 
-	cfg2 = (cfg2_bit7 << SC27XX_PD_CFG2_RX_REF_CAL_SHIFT) & 0x1;
+	cfg2 = (cfg2_bit7 << SC27XX_PD_CFG2_RX_REF_CAL_SHIFT) & 0x80;
 	cfg2 |= SC27XX_PD_CFG2_PD_CLK_BIT;
 	cfg2_mask = SC27XX_PD_CFG2_PD_CLK_BIT | SC27XX_PD_CFG2_RX_REF_CAL_BIT;
 
@@ -742,14 +933,14 @@ static int sc27xx_pd_rc_ref_cal(struct sc27xx_pd *pd)
 static int sc27xx_pd_delta_cal(struct sc27xx_pd *pd)
 {
 	u32 delta_cal = pd->delta_cal;
-	u32 vol, vref_sel, ref_cal, delta;
+	u32 vol, vref_sel = 0, ref_cal = 0, delta = 0;
 	u32 cfg1, cfg1_mask;
 
 	cfg1_mask = SC27XX_PD_CC1_SW | SC27XX_PD_CC2_SW |
 		    SC27XX_PD_CFG1_VREF_SEL_MASK |
 		    SC27XX_PD_CFG1_REF_CAL_MASK;
 
-	delta = ((delta_cal & 0x3F80) >> 7);
+	delta = ((delta_cal >> SC27XX_PD_SHIFT(pd->var_data->efuse_delta_shift)) & 0x7f);
 	/*
 	 * According to the datasheet, delta is efuse caliration
 	 * vol = delta * 2 + 1000
@@ -764,72 +955,63 @@ static int sc27xx_pd_delta_cal(struct sc27xx_pd *pd)
 	if (vol >= 1185 && vol <= 1195) {
 		vref_sel = 0x0;
 		ref_cal = 0x0;
-	} else if (vol >= 1175 && vol <= 1185) {
+	} else if (vol >= 1175 && vol < 1185) {
 		vref_sel = 0x0;
 		ref_cal = 0x1;
-	} else if (vol >= 1165 && vol <= 1175) {
+	} else if (vol >= 1165 && vol < 1175) {
 		vref_sel = 0x0;
 		ref_cal = 0x2;
-	} else if (vol >= 1155 && vol <= 1165) {
+	} else if (vol >= 1155 && vol < 1165) {
 		vref_sel = 0x0;
 		ref_cal = 0x3;
-	} else if (vol >= 1145 && vol <= 1155) {
+	} else if (vol >= 1145 && vol < 1155) {
 		vref_sel = 0x0;
 		ref_cal = 0x4;
-	} else if (vol >= 1135 && vol <= 1145) {
+	} else if (vol >= 1135 && vol < 1145) {
 		vref_sel = 0x0;
 		ref_cal = 0x5;
-	} else if (vol >= 1125 && vol <= 1135) {
+	} else if (vol >= 1125 && vol < 1135) {
 		vref_sel = 0x0;
 		ref_cal = 0x6;
-	} else if (vol >= 1115 && vol <= 1125) {
+	} else if (vol >= 1115 && vol < 1125) {
 		vref_sel = 0x1;
 		ref_cal = 0x2;
-	} else if (vol >= 1105 && vol <= 1115) {
+	} else if (vol >= 1105 && vol < 1115) {
 		vref_sel = 0x1;
 		ref_cal = 0x3;
-	} else if (vol >= 1095 && vol <= 1105) {
+	} else if (vol >= 1095 && vol < 1105) {
 		vref_sel = 0x1;
 		ref_cal = 0x4;
-	} else if (vol >= 1085 && vol <= 1095) {
+	} else if (vol >= 1085 && vol < 1095) {
 		vref_sel = 0x1;
 		ref_cal = 0x5;
-	} else if (vol >= 1075 && vol <= 1085) {
+	} else if (vol >= 1075 && vol < 1085) {
 		vref_sel = 0x1;
 		ref_cal = 0x6;
-	} else if (vol >= 1065 && vol <= 1075) {
+	} else if (vol >= 1065 && vol < 1075) {
 		vref_sel = 0x2;
 		ref_cal = 0x2;
-	} else if (vol >= 1055 && vol <= 1065) {
+	} else if (vol >= 1055 && vol < 1065) {
 		vref_sel = 0x2;
 		ref_cal = 0x3;
-	} else if (vol >= 1045 && vol <= 1055) {
+	} else if (vol >= 1045 && vol < 1055) {
 		vref_sel = 0x2;
 		ref_cal = 0x4;
-	} else if (vol >= 1035 && vol <= 1045) {
+	} else if (vol >= 1035 && vol < 1045) {
 		vref_sel = 0x2;
 		ref_cal = 05;
-	} else if (vol >= 1025 && vol <= 1035) {
+	} else if (vol >= 1025 && vol < 1035) {
 		vref_sel = 0x2;
 		ref_cal = 0x6;
-	} else if (vol >= 1015 && vol <= 1025) {
+	} else if (vol >= 1015 && vol < 1025) {
 		vref_sel = 0x3;
 		ref_cal = 0x2;
-	} else if (vol >= 1005 && vol <= 1015) {
+	} else if (vol >= 1005 && vol < 1015) {
 		vref_sel = 0x3;
 		ref_cal = 0x3;
-	} else if (vol >= 995 && vol <= 1005) {
+	} else if (vol >= 1000 && vol < 1005) {
 		vref_sel = 0x3;
 		ref_cal = 0x4;
-	} else if (vol >= 985 && vol <= 995) {
-		vref_sel = 0x2;
-		ref_cal = 0x6;
-	} else if (vol >= 975 && vol <= 985) {
-		vref_sel = 0x2;
-		ref_cal = 0x6;
-	} else if (vol >= 965 && vol <= 975) {
-		vref_sel = 0x2;
-		ref_cal = 0x7;
 	}
 
 	cfg1 = SC27XX_PD_CC1_SW | SC27XX_PD_CC2_SW;
@@ -842,9 +1024,10 @@ static int sc27xx_pd_delta_cal(struct sc27xx_pd *pd)
 				  cfg1_mask, cfg1);
 }
 
-static int sc27xx_pd_moudle_init(struct sc27xx_pd *pd)
+static int sc27xx_pd_module_init(struct sc27xx_pd *pd)
 {
 	int ret;
+	u32 mask2 = SC27XX_PD_RX_AUTO_GOOD_CRC;
 
 	ret = sc27xx_pd_delta_cal(pd);
 	if (ret < 0)
@@ -876,6 +1059,11 @@ static int sc27xx_pd_moudle_init(struct sc27xx_pd *pd)
 	if (ret < 0)
 		return ret;
 
+	ret = regmap_update_bits(pd->regmap, pd->base + SC27XX_PD_CFG1,
+				 mask2, ~mask2);
+	if (ret < 0)
+		return ret;
+
 	return regmap_write(pd->regmap, pd->base + SC27XX_INT_EN,
 			    SC27XX_INT_EN_MASK);
 }
@@ -889,20 +1077,28 @@ static int sc27xx_pd_init(struct tcpc_dev *tcpc)
 	if (ret)
 		return ret;
 
-	return sc27xx_pd_moudle_init(pd);
+	return sc27xx_pd_module_init(pd);
 }
 
 static irqreturn_t sc27xx_pd_irq(int irq, void *dev_id)
 {
 	struct sc27xx_pd *pd = dev_id;
 	struct pd_message pd_msg;
-	u32 status;
+	u32 status = 0;
 	int ret, state;
 
 	mutex_lock(&pd->lock);
 	ret = regmap_read(pd->regmap, pd->base + SC27XX_INT_FLG, &status);
 	if (ret < 0)
 		goto done;
+
+	if (pd->shutdown_flag) {
+		ret = regmap_update_bits(pd->regmap, pd->base + SC27XX_INT_CLR,
+					 SC27XX_INT_CLR_MASK,
+					 SC27XX_INT_CLR_MASK);
+		dev_info(pd->dev, "SC27XX_INT_FLG(0x28)=0x%x, ret=%d ->: return!!!", status, ret);
+		goto done;
+	}
 
 	if (status & SC27XX_PD_HARD_RST_FLAG) {
 		dev_warn(pd->dev, "IRQ: PD received hardreset");
@@ -1044,7 +1240,7 @@ done:
 
 static int sc27xx_get_vbus_status(struct sc27xx_pd *pd)
 {
-	u32 status;
+	u32 status = 0;
 	bool vbus_present;
 	int ret;
 
@@ -1130,7 +1326,7 @@ static void sc27xx_cc_status(struct sc27xx_pd *pd, u32 status)
 
 static int sc27xx_pd_check_vbus_cc_status(struct sc27xx_pd *pd)
 {
-	u32 val;
+	u32 val = 0;
 	int ret;
 
 	ret = regmap_read(pd->regmap, pd->typec_base + SC27XX_TYPEC_STATUS,
@@ -1138,7 +1334,20 @@ static int sc27xx_pd_check_vbus_cc_status(struct sc27xx_pd *pd)
 	if (ret)
 		return ret;
 
+	ret = sc27xx_pd_set_aon_clock(pd, true);
+	if (ret)
+		return ret;
+
+	ret = sc27xx_pd_clk_cfg(pd);
+	if (ret)
+		return ret;
+
 	pd->state = val & SC27XX_STATE_MASK;
+	if (pd->state == SC27XX_ATTACHED_SNK || pd->state == SC27XX_ATTACHED_SRC)
+		pd->typec_online = true;
+	else
+		pd->typec_online = false;
+
 	sc27xx_cc_polarity_status(pd, val);
 	sc27xx_cc_status(pd, val);
 	sc27xx_get_vbus_status(pd);
@@ -1151,7 +1360,9 @@ static int sc27xx_pd_extcon_event(struct notifier_block *nb,
 {
 	struct sc27xx_pd *pd = container_of(nb, struct sc27xx_pd, extcon_nb);
 
-	schedule_work(&pd->pd_work);
+	dev_info(pd->dev, "typec in or out, pd attached = %d\n", pd->pd_attached);
+	if (pd->pd_attached)
+		schedule_work(&pd->pd_work);
 	return NOTIFY_OK;
 }
 
@@ -1160,10 +1371,36 @@ static void sc27xx_pd_work(struct work_struct *work)
 	struct sc27xx_pd *pd = container_of(work, struct sc27xx_pd, pd_work);
 	int ret;
 
+	dev_info(pd->dev, "check vbus and cc\n");
 	ret = sc27xx_pd_check_vbus_cc_status(pd);
 	if (ret)
 		dev_err(pd->dev, "failed to check vbus and cc status\n");
 }
+
+#define DP_PIN_ASSIGN_GEN2_BR	(BIT(DP_PIN_ASSIGN_A) | \
+					 BIT(DP_PIN_ASSIGN_B))
+
+/* Pin assignments that use DP v1.3 signaling to carry DP protocol */
+#define DP_PIN_ASSIGN_DP_BR		(BIT(DP_PIN_ASSIGN_C) | \
+					 BIT(DP_PIN_ASSIGN_D) | \
+					 BIT(DP_PIN_ASSIGN_E) | \
+					 BIT(DP_PIN_ASSIGN_F))
+#define DP_CAP_PIN_DFP_ASSIGN(_cap_)	((((_cap_) & GENMASK(7, 0)) << 16) | \
+					 (((_cap_) & GENMASK(7, 0)) << 8))
+
+static const struct typec_altmode_desc sc27xx_alt_modes = {
+	.svid = USB_TYPEC_DP_SID,
+	.mode = USB_TYPEC_DP_MODE,
+	.vdo = DP_CAP_CAPABILITY(DP_CAP_DFP_D) | DP_CAP_DP_SIGNALING | \
+		DP_CAP_RECEPTACLE | \
+		DP_CAP_PIN_DFP_ASSIGN(DP_PIN_ASSIGN_DP_BR),
+};
+
+static const struct tcpc_config sc27xx_pd_config = {
+	.type = TYPEC_PORT_DRP,
+	.default_role = TYPEC_SOURCE,
+	.alt_modes = &sc27xx_alt_modes,
+};
 
 static void sc27xx_init_tcpc_dev(struct sc27xx_pd *pd)
 {
@@ -1188,10 +1425,10 @@ static int sc27xx_pd_efuse_read(struct sc27xx_pd *pd,
 {
 	struct nvmem_cell *cell;
 	void *buf;
-	size_t len;
+	size_t len = 0;
 
 	cell = nvmem_cell_get(pd->dev, cell_id);
-	if (IS_ERR(cell))
+	if (IS_ERR_OR_NULL(cell))
 		return PTR_ERR(cell);
 
 	buf = nvmem_cell_read(cell, &len);
@@ -1218,7 +1455,41 @@ static int sc27xx_pd_cal(struct sc27xx_pd *pd)
 	if (ret)
 		return ret;
 
-	return sc27xx_pd_efuse_read(pd, "pdref_calib", &pd->ref_cal);
+	if (pd->var_data->id == PMIC_SC2730) {
+		ret = sc27xx_pd_efuse_read(pd, "pdref_calib", &pd->ref_cal);
+		if (ret)
+			return ret;
+	} else if (pd->var_data->id == PMIC_UMP9620) {
+		/*
+		 * ump9620 pdref_calib use the same block
+		 * with pddelta_calib--block 36.
+		 */
+		ret = sc27xx_pd_efuse_read(pd, "pddelta_calib", &pd->ref_cal);
+		if (ret)
+			return ret;
+	}
+
+	return 0;
+}
+
+static void sc27xx_pd_read_msg_work(struct work_struct *work)
+{
+	struct delayed_work *dwork = to_delayed_work(work);
+	struct sc27xx_pd *pd = container_of(dwork, struct sc27xx_pd,
+					   read_msg_work);
+	struct pd_message pd_msg;
+
+	mutex_lock(&pd->lock);
+
+	if (!pd->need_retry)
+		goto out;
+
+	pd->need_retry = false;
+
+	sc27xx_pd_read_message(pd, &pd_msg);
+
+out:
+	mutex_unlock(&pd->lock);
 }
 
 static void sc27xx_pd_detect_typec_work(struct work_struct *work)
@@ -1227,8 +1498,11 @@ static void sc27xx_pd_detect_typec_work(struct work_struct *work)
 	struct sc27xx_pd *pd = container_of(dwork, struct sc27xx_pd,
 					   typec_detect_work);
 
+	dev_info(pd->dev, "pd try to detect typec extcon\n");
 	if (extcon_get_state(pd->extcon, EXTCON_USB))
 		sc27xx_pd_check_vbus_cc_status(pd);
+
+	pd->pd_attached = true;
 }
 
 static const u32 sc27xx_pd_hardreset[] = {
@@ -1239,11 +1513,20 @@ static const u32 sc27xx_pd_hardreset[] = {
 static int sc27xx_pd_probe(struct platform_device *pdev)
 {
 	struct sc27xx_pd *pd;
+	const struct sc27xx_pd_variant_data *pdata;
 	int pd_irq, ret;
 
+	pdata = of_device_get_match_data(&pdev->dev);
+	if (!pdata) {
+		dev_err(&pdev->dev, "No matching driver data found\n");
+		return -EINVAL;
+	}
+
 	pd = devm_kzalloc(&pdev->dev, sizeof(*pd), GFP_KERNEL);
-	if (!pd)
+	if (!pd) {
+		dev_err(&pdev->dev, "failed to alloc memory\n");
 		return -ENOMEM;
+	}
 
 	pd->dev = &pdev->dev;
 	pd->regmap = dev_get_regmap(pdev->dev.parent, NULL);
@@ -1302,14 +1585,18 @@ static int sc27xx_pd_probe(struct platform_device *pdev)
 	}
 
 	mutex_init(&pd->lock);
+	pd->var_data = pdata;
 	pd->vbus_present = false;
 	pd->constructed = false;
+	pd->config = sc27xx_pd_config;
 	pd->tcpc.config = &pd->config;
 	pd->tcpc.fwnode = device_get_named_child_node(&pdev->dev, "connector");
 
 	ret = sc27xx_pd_cal(pd);
-	if (ret)
+	if (ret) {
+		dev_err(&pdev->dev, "failed to calibrate with efuse data\n");
 		return ret;
+	}
 	sc27xx_init_tcpc_dev(pd);
 
 	pd->vbus = devm_regulator_get(pd->dev, "vbus");
@@ -1323,27 +1610,49 @@ static int sc27xx_pd_probe(struct platform_device *pdev)
 		ret = PTR_ERR(pd->vconn);
 		if (ret == -ENODEV) {
 			dev_warn(pd->dev, "unable to get vddldo supply\n");
+			pd->vconn = NULL;
 		} else {
 			dev_err(pd->dev, "failed to get vddldo supply\n");
 			return ret;
 		}
 	}
 
-	INIT_DELAYED_WORK(&pd->typec_detect_work, sc27xx_pd_detect_typec_work);
-	INIT_WORK(&pd->pd_work, sc27xx_pd_work);
-
-	pd->tcpm_port = tcpm_register_port(pd->dev, &pd->tcpc);
-	if (IS_ERR(pd->tcpm_port))
-		return PTR_ERR(pd->tcpm_port);
+	if (of_property_read_bool(pdev->dev.of_node, "sprd,syscon-aon-apb")) {
+		pd->aon_apb = syscon_regmap_lookup_by_phandle(pdev->dev.of_node,
+							      "sprd,syscon-aon-apb");
+		if (IS_ERR(pd->aon_apb)) {
+			dev_err(pd->dev, "failed to map aon registers (via syscon)\n");
+			return PTR_ERR(pd->aon_apb);
+		}
+	} else {
+		pd->aon_apb = NULL;
+	}
 
 	ret = devm_request_threaded_irq(pd->dev, pd_irq, NULL,
 					sc27xx_pd_irq,
 					IRQF_ONESHOT | IRQF_TRIGGER_LOW,
 					"sc27xx_pd", pd);
 	if (ret < 0) {
-		tcpm_unregister_port(pd->tcpm_port);
+		dev_err(pd->dev, "failed to request irq\n");
 		return ret;
 	}
+
+	pd->pd_wq = create_singlethread_workqueue("sprd_pd_driver");
+	if (!pd->pd_wq) {
+		dev_err(pd->dev, "failed to create singlethread workqueue\n");
+		return -ENOMEM;
+	}
+
+	pd->tcpm_port = tcpm_register_port(pd->dev, &pd->tcpc);
+	if (IS_ERR(pd->tcpm_port)) {
+		dev_err(pd->dev, "failed to register tcpm port\n");
+		destroy_workqueue(pd->pd_wq);
+		return PTR_ERR(pd->tcpm_port);
+	}
+
+	INIT_DELAYED_WORK(&pd->typec_detect_work, sc27xx_pd_detect_typec_work);
+	INIT_DELAYED_WORK(&pd->read_msg_work, sc27xx_pd_read_msg_work);
+	INIT_WORK(&pd->pd_work, sc27xx_pd_work);
 
 	platform_set_drvdata(pdev, pd);
 	schedule_delayed_work(&pd->typec_detect_work,
@@ -1360,17 +1669,95 @@ static int sc27xx_pd_remove(struct platform_device *pdev)
 	return 0;
 }
 
+static void sc27xx_pd_shutdown(struct platform_device *pdev)
+{
+	int ret;
+
+	struct sc27xx_pd *pd = platform_get_drvdata(pdev);
+
+	if (!pd->tcpm_port) {
+		dev_warn(pd->dev, "tcpm_port Null!!!\n");
+		return;
+	}
+
+	tcpm_shutdown(pd->tcpm_port);
+
+	ret = sc27xx_pd_set_rx(&pd->tcpc, false);
+	if (ret) {
+		dev_err(pd->dev, "failed to disable set_rx at shutdown, ret = %d\n", ret);
+		return;
+	}
+
+	pd->shutdown_flag = true;
+
+	cancel_delayed_work_sync(&pd->read_msg_work);
+	cancel_work_sync(&pd->pd_work);
+}
+
+#ifdef CONFIG_PM_SLEEP
+static int sc27xx_pd_suspend(struct device *dev)
+{
+	struct sc27xx_pd *pd = dev_get_drvdata(dev);
+	int ret;
+
+	if (pd->typec_online)
+		return 0;
+
+	dev_info(pd->dev, "typec offline, disable pd clock when suspend\n");
+	ret = sc27xx_pd_disable_clk(pd);
+	if (ret) {
+		dev_err(pd->dev, "failed to disable pd clock when suspend, ret = %d\n", ret);
+		return ret;
+	}
+
+	ret = sc27xx_pd_set_aon_clock(pd, false);
+	if (ret) {
+		dev_err(pd->dev, "failed to disable aon pd clock when suspend, ret = %d\n", ret);
+		return ret;
+	}
+
+	return 0;
+}
+
+static int sc27xx_pd_resume(struct device *dev)
+{
+	struct sc27xx_pd *pd = dev_get_drvdata(dev);
+	int ret;
+
+	ret = sc27xx_pd_set_aon_clock(pd, true);
+	if (ret) {
+		dev_err(pd->dev, "failed to enable aon pd clock when suspend, ret = %d\n", ret);
+		return ret;
+	}
+
+	ret = sc27xx_pd_clk_cfg(pd);
+	if (ret) {
+		dev_err(pd->dev, "failed to enable pd clock when resume, ret = %d\n", ret);
+		return ret;
+	}
+
+	return 0;
+}
+#endif
+
+static const struct dev_pm_ops sc27xx_pd_pm_ops = {
+	SET_SYSTEM_SLEEP_PM_OPS(sc27xx_pd_suspend, sc27xx_pd_resume)
+};
+
 static const struct of_device_id sc27xx_pd_of_match[] = {
-	{.compatible = "sprd,sc2730-pd"},
+	{.compatible = "sprd,sc2730-pd", .data = &sc2730_data},
+	{.compatible = "sprd,ump9620-pd", .data = &ump9620_data},
 	{}
 };
 
 static struct platform_driver sc27xx_pd_driver = {
 	.probe = sc27xx_pd_probe,
 	.remove = sc27xx_pd_remove,
+	.shutdown = sc27xx_pd_shutdown,
 	.driver = {
 		.name = "sc27xx-typec-pd",
 		.of_match_table = sc27xx_pd_of_match,
+		.pm = &sc27xx_pd_pm_ops,
 	},
 };
 

@@ -3,6 +3,8 @@
  *
  * Copyright (C) 2015 Atmel Corporation
  *
+ * Author: Wenyou Yang <wenyou.yang@atmel.com>
+ *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
@@ -660,4 +662,5 @@ static struct platform_driver act8945a_charger_driver = {
 module_platform_driver(act8945a_charger_driver);
 
 MODULE_DESCRIPTION("Active-semi ACT8945A ActivePath charger driver");
+MODULE_AUTHOR("Wenyou Yang <wenyou.yang@atmel.com>");
 MODULE_LICENSE("GPL");

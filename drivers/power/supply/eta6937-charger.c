@@ -1,5 +1,6 @@
 /*
  * Driver for the ETA Solutions eta6937 charger.
+ * Author: Jinfeng.Lin1 <jinfeng.lin1@unisoc.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -23,6 +24,7 @@
 #include <uapi/linux/usb/charger.h>
 #include <linux/gpio.h>
 #include <linux/of_gpio.h>
+#include <linux/pm_wakeup.h>
 
 #define ETA6937_REG_0					0x0
 #define ETA6937_REG_1					0x1
@@ -147,6 +149,8 @@
 
 #define ENABLE_CHARGE 0
 #define DISABLE_CHARGE 1
+
+#define ETA6937_WAKE_UP_MS              2000
 
 static int eta6937_max_chg_cur[] = {
 	550000,
@@ -701,58 +705,8 @@ static void eta6937_charger_work(struct work_struct *data)
 {
 	struct eta6937_charger_info *info =
 		container_of(data, struct eta6937_charger_info, work);
-	int limit_cur, cur, ret;
 	bool present = eta6937_charger_is_bat_present(info);
 
-	mutex_lock(&info->lock);
-
-	if (info->limit > 0 && !info->charging && present) {
-		if (info->need_reinit) {
-			ret = eta6937_charger_hw_init(info);
-			if (ret)
-				goto out;
-			info->need_reinit = false;
-		}
-		/* set current limitation and start to charge */
-		switch (info->usb_phy->chg_type) {
-		case SDP_TYPE:
-			limit_cur = info->cur.sdp_limit;
-			cur = info->cur.sdp_cur;
-			break;
-		case DCP_TYPE:
-			limit_cur = info->cur.dcp_limit;
-			cur = info->cur.dcp_cur;
-			break;
-		case CDP_TYPE:
-			limit_cur = info->cur.cdp_limit;
-			cur = info->cur.cdp_cur;
-			break;
-		default:
-			limit_cur = info->cur.unknown_limit;
-			cur = info->cur.unknown_cur;
-		}
-
-		ret = eta6937_charger_set_limit_current(info, limit_cur);
-		if (ret)
-			goto out;
-
-		ret = eta6937_charger_set_current(info, cur);
-		if (ret)
-			goto out;
-
-		ret = eta6937_charger_start_charge(info);
-		if (ret)
-			goto out;
-
-		info->charging = true;
-	} else if ((!info->limit && info->charging) || !present) {
-		/* Stop charging */
-		info->charging = false;
-		eta6937_charger_stop_charge(info);
-	}
-
-out:
-	mutex_unlock(&info->lock);
 	dev_info(info->dev, "battery present = %d, charger type = %d\n",
 		 present, info->usb_phy->chg_type);
 	cm_notify_event(info->psy_usb, CM_EVENT_CHG_START_STOP, NULL);
@@ -767,6 +721,7 @@ static int eta6937_charger_usb_change(struct notifier_block *nb,
 
 	info->limit = limit;
 
+	pm_wakeup_event(info->dev, ETA6937_WAKE_UP_MS);
 	schedule_work(&info->work);
 	return NOTIFY_OK;
 }
@@ -1250,6 +1205,9 @@ static int eta6937_charger_probe(struct i2c_client *client,
 	if (ret)
 		return ret;
 
+	eta6937_charger_stop_charge(info);
+
+	device_init_wakeup(info->dev, true);
 	info->usb_notify.notifier_call = eta6937_charger_usb_change;
 	ret = usb_register_notifier(info->usb_phy, &info->usb_notify);
 	if (ret) {
@@ -1263,6 +1221,32 @@ static int eta6937_charger_probe(struct i2c_client *client,
 			  eta6937_charger_feed_watchdog_work);
 
 	return 0;
+}
+
+static void eta6937_charger_shutdown(struct i2c_client *client)
+{
+	struct eta6937_charger_info *info = i2c_get_clientdata(client);
+	int ret = 0;
+
+	cancel_delayed_work_sync(&info->wdt_work);
+	if (info->otg_enable) {
+		info->otg_enable = false;
+		info->need_reinit = true;
+		cancel_delayed_work_sync(&info->otg_work);
+		ret = eta6937_update_bits(info, ETA6937_REG_1,
+					  ETA6937_REG_HZ_MODE_MASK |
+					  ETA6937_REG_OPA_MODE_MASK,
+					  0);
+		if (ret)
+			dev_err(info->dev, "disable eta6937 otg failed ret = %d\n", ret);
+
+		/* Enable charger detection function to identify the charger type */
+		ret = regmap_update_bits(info->pmic, info->charger_detect,
+					 BIT_DP_DM_BC_ENB, 0);
+		if (ret)
+			dev_err(info->dev,
+				"enable charger detection function failed ret = %d\n", ret);
+	}
 }
 
 static int eta6937_charger_remove(struct i2c_client *client)
@@ -1349,6 +1333,7 @@ static struct i2c_driver eta6937_charger_driver = {
 		.pm = &eta6937_charger_pm_ops,
 	},
 	.probe = eta6937_charger_probe,
+	.shutdown = eta6937_charger_shutdown,
 	.remove = eta6937_charger_remove,
 	.id_table = eta6937_i2c_id,
 };

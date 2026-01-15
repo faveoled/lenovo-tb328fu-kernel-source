@@ -1,9 +1,22 @@
 /*
  * Driver for batteries with DS2760 chips inside.
  *
+ * Copyright © 2007 Anton Vorontsov
+ *	       2004-2007 Matt Reimer
+ *	       2004 Szabolcs Gyurko
+ *
  * Use consistent with the GNU GPL is permitted,
  * provided that this copyright notice is
  * preserved in its entirety in all copies and derived works.
+ *
+ * Author:  Anton Vorontsov <cbou@mail.ru>
+ *	    February 2007
+ *
+ *	    Matt Reimer <mreimer@vpop.net>
+ *	    April 2004, 2005, 2007
+ *
+ *	    Szabolcs Gyurko <szabolcs.gyurko@tlt.hu>
+ *	    September 2004
  */
 
 #include <linux/module.h>
@@ -629,4 +642,7 @@ static struct platform_driver ds2760_battery_driver = {
 module_platform_driver(ds2760_battery_driver);
 
 MODULE_LICENSE("GPL");
+MODULE_AUTHOR("Szabolcs Gyurko <szabolcs.gyurko@tlt.hu>, "
+	      "Matt Reimer <mreimer@vpop.net>, "
+	      "Anton Vorontsov <cbou@mail.ru>");
 MODULE_DESCRIPTION("ds2760 battery driver");

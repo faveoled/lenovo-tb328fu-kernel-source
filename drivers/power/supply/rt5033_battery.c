@@ -2,6 +2,7 @@
  * Fuel gauge driver for Richtek RT5033
  *
  * Copyright (C) 2014 Samsung Electronics, Co., Ltd.
+ * Author: Beomho Seo <beomho.seo@samsung.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -177,4 +178,5 @@ static struct i2c_driver rt5033_battery_driver = {
 module_i2c_driver(rt5033_battery_driver);
 
 MODULE_DESCRIPTION("Richtek RT5033 fuel gauge driver");
+MODULE_AUTHOR("Beomho Seo <beomho.seo@samsung.com>");
 MODULE_LICENSE("GPL");

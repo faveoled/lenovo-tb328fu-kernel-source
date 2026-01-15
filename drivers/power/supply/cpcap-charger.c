@@ -1,6 +1,8 @@
 /*
  * Motorola CPCAP PMIC battery charger driver
  *
+ * Copyright (C) 2017 Tony Lindgren <tony@atomide.com>
+ *
  * Rewritten for Linux power framework with some parts based on
  * on earlier driver found in the Motorola Linux kernel:
  *
@@ -692,6 +694,7 @@ static struct platform_driver cpcap_charger_driver = {
 };
 module_platform_driver(cpcap_charger_driver);
 
+MODULE_AUTHOR("Tony Lindgren <tony@atomide.com>");
 MODULE_DESCRIPTION("CPCAP Battery Charger Interface driver");
 MODULE_LICENSE("GPL v2");
 MODULE_ALIAS("platform:cpcap-charger");

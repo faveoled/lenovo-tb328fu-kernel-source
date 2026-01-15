@@ -48,8 +48,8 @@
  * about 50ms. So the trigger settings must be located
  * in headset_irq_xx_handler().
  */
-#define FOR_EIC_CHANGE_DET
-#define FOR_EIC_CHANGE_BUTTON
+#define FOR_EIC_CHANGE_DET /* peng.lee debug for eic change */
+#define FOR_EIC_CHANGE_BUTTON /* peng.lee debug for eic change */
 
 #define EIC_AUD_HEAD_INST2 312
 #define MAX_BUTTON_NUM 6
@@ -65,6 +65,12 @@
 #define ADC_READ_COUNT (2)
 #define ADC_READ_LOOP (2)
 #define CHIP_ID_2720 0x2720
+/*
+ * acoording asic(chen.si)
+ * asci has made 2 average adc sample for 2721,
+ * so we can change adc sapmle from 20 to 10.
+ *
+ */
 #define SCI_ADC_GET_VALUE_COUNT (10)
 
 #define ABS(x) (((x) < (0)) ? (-(x)) : (x))
@@ -930,6 +936,10 @@ static int headset_get_adc_average(struct iio_channel *chan,
 	}
 	/* ================= debug ===================== */
 
+	/*
+	 * we can should confirm 2-4ms delay before read adc(from si.chen),
+	 * and we can only compare one time based on this delay
+	 */
 	usleep_range(2000, 4000);
 	for (i = 0; i < ADC_READ_LOOP; i++) {
 		if (gpio_get_value(gpio_num) != gpio_value) {
@@ -1878,7 +1888,7 @@ static irqreturn_t headset_detect_all_irq_handler(int irq, void *dev)
 
 	headset_reg_read(ANA_STS2, &val);
 	pr_info("ANA_STS2 %#x\n", val);
-#ifdef FOR_EIC_CHANGE_DET
+#ifdef FOR_EIC_CHANGE_DET /* peng.lee debug eic change */
 	if (pdata->jack_type != JACK_TYPE_NC) {
 		if (hdst->gpio_det_val_last == 1) {
 			if (pdata->irq_trigger_levels[HDST_GPIO_DET_ALL] == 1)

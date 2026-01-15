@@ -32,6 +32,8 @@ void *marlin_callback_para;
 struct platform_chip_id g_platform_chip_id;
 static u32 g_platform_chip_type;
 static const struct wcn_chip_type wcn_chip_type[] = {
+	/* WCN_SHARKL3_CHIP and WCN_SHARKL3_CHIP_22NM is the same */
+	{0x98550000, WCN_SHARKL3_CHIP},
 	{0x96360000, WCN_SHARKLE_CHIP_AA_OR_AB},
 	{0x96360002, WCN_SHARKLE_CHIP_AC},
 	{0x96360003, WCN_SHARKLE_CHIP_AD},
@@ -45,7 +47,7 @@ struct wcn_special_share_mem *s_wssm_phy_offset_p =
 enum wcn_aon_chip_id wcn_get_aon_chip_id(void)
 {
 	u32 aon_chip_id;
-	u32 version_id;
+	u32 version_id, manufacture_id;
 	u32 i;
 	struct regmap *regmap;
 
@@ -57,6 +59,18 @@ enum wcn_aon_chip_id wcn_get_aon_chip_id(void)
 	WCN_INFO("aon_chip_id=0x%08x\n", aon_chip_id);
 	for (i = 0; i < ARRAY_SIZE(wcn_chip_type); i++) {
 		if (wcn_chip_type[i].chipid == aon_chip_id) {
+			if (wcn_chip_type[i].chiptype == WCN_SHARKL3_CHIP) {
+				wcn_regmap_read(regmap, WCN_AON_MANUFACTURE_ID,
+						&manufacture_id);
+				WCN_INFO("manufacture_id=0x%08x\n", manufacture_id);
+				/* manufacture_id:
+				 * 0x800 for TSMC 28HPC+
+				 * 0xA00 for TSMC 22ULP
+				 */
+				return (manufacture_id == 0xA00) ?
+					WCN_SHARKL3_CHIP_22NM : WCN_SHARKL3_CHIP;
+			}
+
 			if (wcn_chip_type[i].chiptype != WCN_PIKE2_CHIP)
 				return wcn_chip_type[i].chiptype;
 			wcn_regmap_read(regmap, WCN_AON_VERSION_ID,
@@ -235,7 +249,7 @@ u32 wcn_get_cp2_comm_rx_count(void)
 		   (phys_addr_t)&s_wssm_phy_offset_p->marlin.loopcheck_cnt;
 	wcn_read_data_from_phy_addr(phy_addr,
 				    &rx_count, sizeof(u32));
-	WCN_INFO("cp2 comm rx count :%d\n", rx_count);
+	//WCN_INFO("cp2 comm rx count :%d\n", rx_count);
 
 	return rx_count;
 }
@@ -908,3 +922,24 @@ void mdbg_hold_cpu(void)
 	msleep(200);
 }
 
+void wcn_check_btwfcp_dcache_flushed(void)
+{
+	u32 value, icnt = 0;
+	phys_addr_t init_addr;
+
+	init_addr = wcn_get_btwf_init_status_addr();
+	while (1) {
+		wcn_read_data_from_phy_addr(init_addr, &value, sizeof(u32));
+		if (value != MDBG_CACHE_FLAG_VALUE) {
+			WCN_INFO("%s btwfCP dcache flushed(0x%x).\n", __func__, value);
+			return;
+		} else {
+			if (icnt++ > 10) {
+				WCN_INFO("%s flush btwfCP dcache failed.\n", __func__);
+				return;
+			}
+			WCN_INFO("%s check btwfCP dcache flushed %u.\n", __func__, icnt);
+			msleep(50);
+		}
+	}
+}

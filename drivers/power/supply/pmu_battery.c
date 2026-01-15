@@ -1,6 +1,8 @@
 /*
  * Battery class driver for Apple PMU
  *
+ *	Copyright © 2006  David Woodhouse <dwmw2@infradead.org>
+ *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
@@ -219,5 +221,6 @@ static void __exit pmu_bat_exit(void)
 module_init(pmu_bat_init);
 module_exit(pmu_bat_exit);
 
+MODULE_AUTHOR("David Woodhouse <dwmw2@infradead.org>");
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("PMU battery driver");

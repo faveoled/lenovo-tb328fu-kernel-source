@@ -1,6 +1,7 @@
 /* NXP PCF50633 Main Battery Charger Driver
  *
  * (C) 2006-2008 by Openmoko, Inc.
+ * Author: Balaji Rao <balajirrao@openmoko.org>
  * All rights reserved.
  *
  * Broken down from monstrous PCF50633 driver mainly by
@@ -476,6 +477,7 @@ static struct platform_driver pcf50633_mbc_driver = {
 
 module_platform_driver(pcf50633_mbc_driver);
 
+MODULE_AUTHOR("Balaji Rao <balajirrao@openmoko.org>");
 MODULE_DESCRIPTION("PCF50633 mbc driver");
 MODULE_LICENSE("GPL");
 MODULE_ALIAS("platform:pcf50633-mbc");

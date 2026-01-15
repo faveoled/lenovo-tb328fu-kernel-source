@@ -19,6 +19,7 @@ enum usb_charger_type {
 	DCP_TYPE = 2,
 	CDP_TYPE = 3,
 	ACA_TYPE = 4,
+	FLOAT_TYPE=5,
 };
 
 /* USB charger state */

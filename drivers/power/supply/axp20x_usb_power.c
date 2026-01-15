@@ -1,6 +1,9 @@
 /*
  * AXP20x PMIC USB power supply status driver
  *
+ * Copyright (C) 2015 Hans de Goede <hdegoede@redhat.com>
+ * Copyright (C) 2014 Bruno Prémont <bonbons@linux-vserver.org>
+ *
  * This program is free software; you can redistribute it and/or modify it
  * under  the terms of the GNU General  Public License as published by the
  * Free Software Foundation;  either version 2 of the License, or (at your
@@ -437,5 +440,6 @@ static struct platform_driver axp20x_usb_power_driver = {
 
 module_platform_driver(axp20x_usb_power_driver);
 
+MODULE_AUTHOR("Hans de Goede <hdegoede@redhat.com>");
 MODULE_DESCRIPTION("AXP20x PMIC USB power supply status driver");
 MODULE_LICENSE("GPL");

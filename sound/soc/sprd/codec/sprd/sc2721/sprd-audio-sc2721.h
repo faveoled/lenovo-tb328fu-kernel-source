@@ -207,6 +207,7 @@ static inline int arch_audio_codec_analog_enable(void)
 	int mask = BIT_CLK_AUD_IF_6P5M_EN | BIT_CLK_AUD_IF_EN;
 
 	sci_adi_write(ANA_REG_GLB_ARM_CLK_EN, mask, mask);
+	/* peng debug how to set it in sc2721? */
 	sci_adi_write(ANA_REG_GLB_AUDIO_CTRL0, BIT_CLK_AUD_IF_6P5M_TX_INV_EN,
 			  BIT_CLK_AUD_IF_6P5M_TX_INV_EN);
 

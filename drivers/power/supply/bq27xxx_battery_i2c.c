@@ -1,6 +1,9 @@
 /*
  * BQ27xxx battery monitor I2C driver
  *
+ * Copyright (C) 2015 Texas Instruments Incorporated - http://www.ti.com/
+ *	Andrew F. Davis <afd@ti.com>
+ *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
@@ -15,6 +18,7 @@
 #include <linux/interrupt.h>
 #include <linux/module.h>
 #include <asm/unaligned.h>
+#include <linux/delay.h>
 
 #include <linux/power/bq27xxx_battery.h>
 
@@ -37,6 +41,7 @@ static int bq27xxx_battery_i2c_read(struct bq27xxx_device_info *di, u8 reg,
 	struct i2c_msg msg[2];
 	u8 data[2];
 	int ret;
+	int times =0; //add i2c read times for i2c_error
 
 	if (!client->adapter)
 		return -ENODEV;
@@ -54,6 +59,15 @@ static int bq27xxx_battery_i2c_read(struct bq27xxx_device_info *di, u8 reg,
 		msg[1].len = 2;
 
 	ret = i2c_transfer(client->adapter, msg, ARRAY_SIZE(msg));
+	//add i2c read times for i2c_error
+	while(ret < 0 && times < 5)
+	{
+		pr_err("%s: read reg = 0x%x error, ret = %d,read again %d times more to check!!!", __func__,*msg[0].buf,ret,times+1);
+		msleep(2000);
+		ret = i2c_transfer(client->adapter, msg, ARRAY_SIZE(msg));
+		times++;
+	};
+	//add i2c read times for i2c_error
 	if (ret < 0)
 		return ret;
 
@@ -146,7 +160,7 @@ static int bq27xxx_battery_i2c_probe(struct i2c_client *client,
 {
 	struct bq27xxx_device_info *di;
 	int ret;
-	char *name;
+	//char *name;
 	int num;
 
 	/* Get new ID for the new battery device */
@@ -156,9 +170,9 @@ static int bq27xxx_battery_i2c_probe(struct i2c_client *client,
 	if (num < 0)
 		return num;
 
-	name = devm_kasprintf(&client->dev, GFP_KERNEL, "%s-%d", id->name, num);
-	if (!name)
-		goto err_mem;
+	//name = devm_kasprintf(&client->dev, GFP_KERNEL, "%s-%d", id->name, num);
+	//if (!name)
+		//goto err_mem;
 
 	di = devm_kzalloc(&client->dev, sizeof(*di), GFP_KERNEL);
 	if (!di)
@@ -167,7 +181,8 @@ static int bq27xxx_battery_i2c_probe(struct i2c_client *client,
 	di->id = num;
 	di->dev = &client->dev;
 	di->chip = id->driver_data;
-	di->name = name;
+	//di->name = name;
+	di->name = "bq27541";
 
 	di->bus.read = bq27xxx_battery_i2c_read;
 	di->bus.write = bq27xxx_battery_i2c_write;
@@ -236,6 +251,7 @@ static const struct i2c_device_id bq27xxx_i2c_id_table[] = {
 	{ "bq27520g2", BQ27520G2 },
 	{ "bq27520g3", BQ27520G3 },
 	{ "bq27520g4", BQ27520G4 },
+	{ "bq27521", BQ27521 },
 	{ "bq27530", BQ27530 },
 	{ "bq27531", BQ27531 },
 	{ "bq27541", BQ27541 },
@@ -245,6 +261,7 @@ static const struct i2c_device_id bq27xxx_i2c_id_table[] = {
 	{ "bq27545", BQ27545 },
 	{ "bq27421", BQ27421 },
 	{ "bq27425", BQ27425 },
+	{ "bq27426", BQ27426 },
 	{ "bq27441", BQ27441 },
 	{ "bq27621", BQ27621 },
 	{},
@@ -266,6 +283,7 @@ static const struct of_device_id bq27xxx_battery_i2c_of_match_table[] = {
 	{ .compatible = "ti,bq27520g2" },
 	{ .compatible = "ti,bq27520g3" },
 	{ .compatible = "ti,bq27520g4" },
+	{ .compatible = "ti,bq27521" },
 	{ .compatible = "ti,bq27530" },
 	{ .compatible = "ti,bq27531" },
 	{ .compatible = "ti,bq27541" },
@@ -275,6 +293,7 @@ static const struct of_device_id bq27xxx_battery_i2c_of_match_table[] = {
 	{ .compatible = "ti,bq27545" },
 	{ .compatible = "ti,bq27421" },
 	{ .compatible = "ti,bq27425" },
+	{ .compatible = "ti,bq27426" },
 	{ .compatible = "ti,bq27441" },
 	{ .compatible = "ti,bq27621" },
 	{},
@@ -293,5 +312,6 @@ static struct i2c_driver bq27xxx_battery_i2c_driver = {
 };
 module_i2c_driver(bq27xxx_battery_i2c_driver);
 
+MODULE_AUTHOR("Andrew F. Davis <afd@ti.com>");
 MODULE_DESCRIPTION("BQ27xxx battery monitor i2c driver");
 MODULE_LICENSE("GPL");

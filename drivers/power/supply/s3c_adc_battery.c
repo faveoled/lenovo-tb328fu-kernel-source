@@ -454,5 +454,6 @@ static struct platform_driver s3c_adc_bat_driver = {
 
 module_platform_driver(s3c_adc_bat_driver);
 
+MODULE_AUTHOR("Vasily Khoruzhick <anarsoul@gmail.com>");
 MODULE_DESCRIPTION("iPAQ H1930/H1940/RX1950 battery controller driver");
 MODULE_LICENSE("GPL");

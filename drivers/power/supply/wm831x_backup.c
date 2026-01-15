@@ -220,5 +220,6 @@ static struct platform_driver wm831x_backup_driver = {
 module_platform_driver(wm831x_backup_driver);
 
 MODULE_DESCRIPTION("Backup battery charger driver for WM831x PMICs");
+MODULE_AUTHOR("Mark Brown <broonie@opensource.wolfsonmicro.com>");
 MODULE_LICENSE("GPL");
 MODULE_ALIAS("platform:wm831x-backup");

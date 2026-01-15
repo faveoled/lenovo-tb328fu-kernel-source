@@ -1,0 +1,82 @@
+/ {
+	fragment {
+		target-path = "/";
+		__overlay__ {
+			lcds {
+				lcd_ft8201_boe_mipi_hdp_vdo: lcd_ft8201_boe_mipi_hdp_vdo {
+
+					sprd,dsi-work-mode = <1>; /* video burst mode*/
+					sprd,dsi-lane-number = <4>;
+					sprd,dsi-color-format = "rgb888";
+
+					sprd,phy-bit-clock = <1105000>;	/* kbps */
+					sprd,phy-escape-clock = <20000>;/* kHz */
+
+					sprd,width-mm = <135>;
+					sprd,height-mm = <216>;
+
+					sprd,reset-on-sequence = <0 5>, <1 40>;
+					sprd,reset-off-sequence = <1 5>;
+
+					sprd,use-dcs-write;
+
+					sprd,initial-command = [
+						/*----------------------LCD initial code start----------------------*/
+						05 78 00 01 11
+						39 00 00 03 50 5A 23
+						39 00 00 03 90 00 00
+						39 00 00 03 94 2c 00
+						39 00 00 03 50 5A 19
+						15 00 00 02 A2 30
+						15 00 00 02 50 00
+						05 00 00 01 29
+
+						/*-------------  Display Initial Setting end -------------------------*/
+					];
+
+					sprd,sleep-in-command = [
+						05 14 00 01 28
+						05 78 00 01 10
+					];
+
+					sprd,sleep-out-command = [
+						05 78 00 01 11
+						05 14 00 01 29
+					];
+					oled-backlight{
+						default-brightness-level = <125>;
+						sprd,max-level = <255>;
+
+						sprd,reg-unlock = [
+							39 00 00 03 50 5A 23
+						];
+
+						brightness-levels = [
+							15 01 00 02 90 FF
+						];
+
+						sprd,reg-lock = [
+							15 00 00 02 50 00
+						];
+
+					};
+					display-timings {
+						native-mode = <&ft8201_boe_timing0>;
+
+						ft8201_boe_timing0: timing0 {
+							clock-frequency = <153600000>;
+							hactive = <1200>;
+							vactive = <1920>;
+							hback-porch = <12>;
+							hfront-porch = <27>;
+							vback-porch = <32>;
+							vfront-porch = <155>;
+							hsync-len = <8>;
+							vsync-len = <8>;
+						};
+					};
+				};
+			};
+		};
+	};
+};

@@ -2,9 +2,11 @@
  * Maxim MAX14656 / AL32 USB Charger Detector driver
  *
  * Copyright (C) 2014 LG Electronics, Inc
+ * Copyright (C) 2016 Alexander Kurz <akurz@blala.de>
  *
  * Components from Maxim AL32 Charger detection Driver for MX50 Yoshi Board
  * Copyright (C) Amazon Technologies Inc. All rights reserved.
+ * Manish Lachwani (lachwani@lab126.com)
  *
  * This package is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and

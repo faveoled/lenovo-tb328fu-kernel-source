@@ -3,6 +3,8 @@
  *
  * Copyright (C) 2010 Indesign, LLC
  *
+ * Author: Clifton Barnes <cabarnes@indesign-llc.com>
+ *
  * Based on ds2760_battery and ds2782_battery drivers
  *
  * This program is free software; you can redistribute it and/or modify
@@ -831,5 +833,6 @@ static struct platform_driver ds2780_battery_driver = {
 module_platform_driver(ds2780_battery_driver);
 
 MODULE_LICENSE("GPL");
+MODULE_AUTHOR("Clifton Barnes <cabarnes@indesign-llc.com>");
 MODULE_DESCRIPTION("Maxim/Dallas DS2780 Stand-Alone Fuel Gauage IC driver");
 MODULE_ALIAS("platform:ds2780-battery");

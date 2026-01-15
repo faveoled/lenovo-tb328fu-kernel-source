@@ -1,6 +1,8 @@
 /*
  * Battery measurement code for Zipit Z2
  *
+ * Copyright (C) 2009 Peter Edwards <sweetlilmre@gmail.com>
+ *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
@@ -324,4 +326,5 @@ static struct i2c_driver z2_batt_driver = {
 module_i2c_driver(z2_batt_driver);
 
 MODULE_LICENSE("GPL");
+MODULE_AUTHOR("Peter Edwards <sweetlilmre@gmail.com>");
 MODULE_DESCRIPTION("Zipit Z2 battery driver");

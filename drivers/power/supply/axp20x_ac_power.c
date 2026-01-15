@@ -2,6 +2,7 @@
  * AXP20X and AXP22X PMICs' ACIN power supply driver
  *
  * Copyright (C) 2016 Free Electrons
+ *	Quentin Schulz <quentin.schulz@free-electrons.com>
  *
  * This program is free software; you can redistribute it and/or modify it
  * under  the terms of the GNU General  Public License as published by the
@@ -247,5 +248,6 @@ static struct platform_driver axp20x_ac_power_driver = {
 
 module_platform_driver(axp20x_ac_power_driver);
 
+MODULE_AUTHOR("Quentin Schulz <quentin.schulz@free-electrons.com>");
 MODULE_DESCRIPTION("AXP20X and AXP22X PMICs' AC power supply driver");
 MODULE_LICENSE("GPL");

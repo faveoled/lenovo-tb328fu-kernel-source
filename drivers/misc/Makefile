@@ -73,9 +73,8 @@ lkdtm-$(CONFIG_LKDTM)		+= lkdtm_rodata_objcopy.o
 lkdtm-$(CONFIG_LKDTM)		+= lkdtm_usercopy.o
 obj-y 				+= sprd_audio/
 obj-y				+= sprd_map/
-
-obj-y       			+= hardware_info.o
-
+obj-$(CONFIG_BOARD_ID)          += board_id.o
+obj-$(CONFIG_SPRD_SOCID)	+= sprd_soc_id.o
 KCOV_INSTRUMENT_lkdtm_rodata.o	:= n
 CFLAGS_lkdtm_rodata.o		+= $(DISABLE_LTO)
 
@@ -85,3 +84,4 @@ OBJCOPYFLAGS_lkdtm_rodata_objcopy.o := \
 targets += lkdtm_rodata.o lkdtm_rodata_objcopy.o
 $(obj)/lkdtm_rodata_objcopy.o: $(obj)/lkdtm_rodata.o FORCE
 	$(call if_changed,objcopy)
+obj-y 				+= wantjoin/

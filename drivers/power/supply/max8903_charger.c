@@ -2,6 +2,7 @@
  * max8903_charger.c - Maxim 8903 USB/Adapter Charger Driver
  *
  * Copyright (C) 2011 Samsung Electronics
+ * MyungJoo Ham <myungjoo.ham@samsung.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -15,6 +16,7 @@
  *
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  *
  */
 
@@ -453,4 +455,5 @@ module_platform_driver(max8903_driver);
 
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("MAX8903 Charger Driver");
+MODULE_AUTHOR("MyungJoo Ham <myungjoo.ham@samsung.com>");
 MODULE_ALIAS("platform:max8903-charger");

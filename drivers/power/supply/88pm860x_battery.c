@@ -2,6 +2,8 @@
  * Battery driver for Marvell 88PM860x PMIC
  *
  * Copyright (c) 2012 Marvell International Ltd.
+ * Author:	Jett Zhou <jtzhou@marvell.com>
+ *		Haojian Zhuang <haojian.zhuang@marvell.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as

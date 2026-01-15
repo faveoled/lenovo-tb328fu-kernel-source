@@ -3,6 +3,7 @@
  *  fuel-gauge systems for lithium-ion (Li+) batteries
  *
  *  Copyright (C) 2009 Samsung Electronics
+ *  Minkyu Kang <mk7.kang@samsung.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -295,5 +296,6 @@ static struct i2c_driver max17040_i2c_driver = {
 };
 module_i2c_driver(max17040_i2c_driver);
 
+MODULE_AUTHOR("Minkyu Kang <mk7.kang@samsung.com>");
 MODULE_DESCRIPTION("MAX17040 Fuel Gauge");
 MODULE_LICENSE("GPL");

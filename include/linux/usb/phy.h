@@ -159,6 +159,12 @@ struct usb_phy {
 	 */
 	enum usb_charger_type (*charger_detect)(struct usb_phy *x);
 
+	/*
+	 * Charger re-detection method can be implemented if you need to
+	 * manually detect the charger type.
+	*/
+	enum usb_charger_type (*retry_charger_detect)(struct usb_phy *x);
+
 	/* reset the PHY */
 	int	(*reset_phy)(struct usb_phy *x);
 

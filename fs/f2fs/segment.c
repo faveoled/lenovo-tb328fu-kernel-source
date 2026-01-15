@@ -4256,7 +4256,9 @@ static int build_sit_entries(struct f2fs_sb_info *sbi)
 	if (!err && total_node_blocks != valid_node_count(sbi)) {
 		f2fs_err(sbi, "SIT is corrupted node# %u vs %u",
 			 total_node_blocks, valid_node_count(sbi));
-		err = -EFSCORRUPTED;
+		sbi->total_valid_node_count = total_node_blocks;
+		set_sbi_flag(sbi, SBI_NEED_FSCK);
+		err = 0;
 	}
 
 	return err;

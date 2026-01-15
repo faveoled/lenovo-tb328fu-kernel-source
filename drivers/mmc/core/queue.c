@@ -293,6 +293,7 @@ static void mmc_exit_request(struct request_queue *q, struct request *req)
 		mmc_blk_part_cmdq_en(q->queuedata))
 		return;
 #endif
+
 	kfree(mq_rq->sg);
 	mq_rq->sg = NULL;
 }

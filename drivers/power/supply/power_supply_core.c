@@ -1,5 +1,10 @@
 /*
  *  Universal power supply monitor class
+ *
+ *  Copyright © 2007  Anton Vorontsov <cbou@mail.ru>
+ *  Copyright © 2004  Szabolcs Gyurko
+ *  Copyright © 2003  Ian Molton <spyro@f2s.com>
+ *
  *  Modified: 2004, Oct     Szabolcs Gyurko
  *
  *  You may use this code as per GPL version 2
@@ -593,6 +598,14 @@ int power_supply_get_battery_info(struct power_supply *psy,
 	info->cur.aca_limit = -EINVAL;
 	info->cur.unknown_cur = -EINVAL;
 	info->cur.unknown_limit = -EINVAL;
+	info->cur.fchg_cur = -EINVAL;
+	info->cur.fchg_limit = -EINVAL;
+	info->cur.flash_cur = -EINVAL;
+	info->cur.flash_limit = -EINVAL;
+	info->cur.wl_bpp_cur = -EINVAL;
+	info->cur.wl_bpp_limit = -EINVAL;
+	info->cur.wl_epp_cur = -EINVAL;
+	info->cur.wl_epp_limit = -EINVAL;
 
 	for (index = 0; index < POWER_SUPPLY_OCV_TEMP_MAX; index++) {
 		info->ocv_table[index]       = NULL;
@@ -638,6 +651,8 @@ int power_supply_get_battery_info(struct power_supply *psy,
 			     &info->constant_charge_voltage_max_uv);
 	of_property_read_u32(battery_np, "factory-internal-resistance-micro-ohms",
 			     &info->factory_internal_resistance_uohm);
+	of_property_read_u32(battery_np, "charge-pumps-threshold-microvolt",
+			     &info->cp_ocv_threshold);
 	of_property_read_u32_index(battery_np, "charge-sdp-current-microamp", 0,
 				   &info->cur.sdp_cur);
 	of_property_read_u32_index(battery_np, "charge-sdp-current-microamp", 1,
@@ -662,6 +677,18 @@ int power_supply_get_battery_info(struct power_supply *psy,
 				   &info->cur.fchg_cur);
 	of_property_read_u32_index(battery_np, "charge-fchg-current-microamp", 1,
 				   &info->cur.fchg_limit);
+	of_property_read_u32_index(battery_np, "charge-flash-current-microamp", 0,
+				   &info->cur.flash_cur);
+	of_property_read_u32_index(battery_np, "charge-flash-current-microamp", 1,
+				   &info->cur.flash_limit);
+	of_property_read_u32_index(battery_np, "charge-wl-bpp-current-microamp", 0,
+				   &info->cur.wl_bpp_cur);
+	of_property_read_u32_index(battery_np, "charge-wl-bpp-current-microamp", 1,
+				   &info->cur.wl_bpp_limit);
+	of_property_read_u32_index(battery_np, "charge-wl-epp-current-microamp", 0,
+				   &info->cur.wl_epp_cur);
+	of_property_read_u32_index(battery_np, "charge-wl-epp-current-microamp", 1,
+				   &info->cur.wl_epp_limit);
 
 	len = of_property_count_u32_elems(battery_np, "ocv-capacity-celsius");
 	if (len < 0 && len != -EINVAL) {
@@ -1358,4 +1385,7 @@ subsys_initcall(power_supply_class_init);
 module_exit(power_supply_class_exit);
 
 MODULE_DESCRIPTION("Universal power supply monitor class");
+MODULE_AUTHOR("Ian Molton <spyro@f2s.com>, "
+	      "Szabolcs Gyurko, "
+	      "Anton Vorontsov <cbou@mail.ru>");
 MODULE_LICENSE("GPL");

@@ -5,6 +5,11 @@
  * Charging algorithm driver for abx500 variants
  *
  * License Terms: GNU General Public License v2
+ * Authors:
+ *	Johan Palsson <johan.palsson@stericsson.com>
+ *	Karl Komierowski <karl.komierowski@stericsson.com>
+ *	Arun R Murthy <arun.murthy@stericsson.com>
+ *	Author: Imre Sunyi <imre.sunyi@sonymobile.com>
  */
 
 #include <linux/init.h>

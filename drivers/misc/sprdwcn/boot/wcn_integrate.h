@@ -56,6 +56,7 @@
 #define WCN_AON_PLATFORM_ID1 0x00EC
 #define WCN_AON_CHIP_ID 0x00FC
 #define WCN_AON_VERSION_ID 0x00F8
+#define WCN_AON_MANUFACTURE_ID 0x00F4
 
 #define PIKE2_CHIP_ID0 0x32000000	/* 2 */
 #define PIKE2_CHIP_ID1 0x50696B65	/* Pike */
@@ -96,6 +97,8 @@ enum wcn_aon_chip_id {
 	WCN_PIKE2_CHIP,
 	WCN_PIKE2_CHIP_AA,
 	WCN_PIKE2_CHIP_AB,
+	WCN_SHARKL3_CHIP,
+	WCN_SHARKL3_CHIP_22NM,
 };
 
 struct wcn_chip_type {
@@ -198,5 +201,6 @@ void wcn_power_set_vddwifipa(u32 value);
 int wcn_marlin_power_enable_vddwifipa(bool enable);
 u32 wcn_parse_platform_chip_id(struct wcn_device *wcn_dev);
 void mdbg_hold_cpu(void);
+void wcn_check_btwfcp_dcache_flushed(void);
 enum wcn_aon_chip_id wcn_get_aon_chip_id(void);
 #endif

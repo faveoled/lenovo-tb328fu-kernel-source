@@ -1,6 +1,8 @@
 /*
  * 1-wire client/driver for the Maxim/Dallas DS2781 Stand-Alone Fuel Gauge IC
  *
+ * Author: Renata Sayakhova <renata@oktetlabs.ru>
+ *
  * Based on ds2780_battery drivers
  *
  * This program is free software; you can redistribute it and/or modify
@@ -830,6 +832,8 @@ static struct platform_driver ds2781_battery_driver = {
 };
 module_platform_driver(ds2781_battery_driver);
 
+MODULE_LICENSE("GPL");
+MODULE_AUTHOR("Renata Sayakhova <renata@oktetlabs.ru>");
 MODULE_DESCRIPTION("Maxim/Dallas DS2781 Stand-Alone Fuel Gauage IC driver");
 MODULE_ALIAS("platform:ds2781-battery");
 

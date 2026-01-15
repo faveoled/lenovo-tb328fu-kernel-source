@@ -17,7 +17,6 @@
 #include "sprd-asoc-debug.h"
 #define pr_fmt(fmt) pr_sprd_fmt("SC2730")""fmt
 
-
 #include <linux/atomic.h>
 #include <linux/completion.h>
 #include <linux/delay.h>
@@ -97,6 +96,7 @@ enum {
 	SPRD_CODEC_DC_OS_SWITCH_ORDER = 104,
 	SPRD_CODEC_DC_OS_ORDER = 105,
 	SPRD_CODEC_RCV_DEPOP_ORDER = 106,
+	SPRD_CODEC_HP_DALR_ORDER = 107,
 	SPRD_CODEC_MIXER_ORDER = 110,/* Must be the last one */
 };
 
@@ -427,9 +427,6 @@ static const struct snd_kcontrol_new virt_output_switch =
 static const struct snd_kcontrol_new ivsence_switch =
 	SOC_DAPM_SINGLE_VIRT("Switch", 1);
 
-static const struct snd_kcontrol_new hpr_pin_switch =
-	SOC_DAPM_SINGLE_VIRT("Switch", 1);
-
 static const struct snd_kcontrol_new aud_adc_switch[] = {
 	SOC_DAPM_SINGLE_VIRT("Switch", 1),
 	SOC_DAPM_SINGLE_VIRT("Switch", 1),
@@ -750,6 +747,14 @@ static void update_switch(struct snd_soc_codec *codec, u32 path, u32 on)
 
 static inline void sprd_codec_vcm_v_sel(struct snd_soc_codec *codec, int v_sel)
 {
+/* yintang marked for compiling.
+ * int mask;
+ * int val;
+ * sp_asoc_pr_dbg("VCM Set %d\n", v_sel);
+ * mask = VB_V_MASK << VB_V;
+ * val = (v_sel << VB_V) & mask;
+ * snd_soc_update_bits(codec, SOC_REG(ANA_PMU1), mask, val);
+ */
 }
 
 /* das dc offset setting */
@@ -1063,6 +1068,7 @@ static void spk_pa_short_check(struct sprd_codec_priv *sprd_codec)
 
 	val = snd_soc_read(codec, SOC_REG(ANA_STS14)) | IMPD_ADC_DATO(0xFFFF);
 
+	/* yintang: TBD. calculate the impd per the val */
 #endif
 }
 
@@ -1396,6 +1402,7 @@ static int sprd_codec_digital_open(struct snd_soc_codec *codec)
 
 	sprd_codec_sdm_init(codec);
 
+	/*peng.lee added this according to janus.li's email*/
 	snd_soc_update_bits(codec, SOC_REG(AUD_SDM_CTL0), 0xFFFF, 0);
 
 	/* Set the left/right clock selection. */
@@ -1419,6 +1426,7 @@ static int sprd_codec_digital_open(struct snd_soc_codec *codec)
 	return ret;
 }
 
+/*yintang marked for compiling*/
 #ifdef SPRD_CODEC_TBD
 static void sprd_codec_irq_oxp_enable(struct snd_soc_codec *codec)
 {
@@ -1824,6 +1832,32 @@ static int rcv_depop_event(struct snd_soc_dapm_widget *w,
 			__func__, i);
 
 	return ret;
+}
+
+static int hpl_sdal_event(struct snd_soc_dapm_widget *w,
+			  struct snd_kcontrol *kcontrol, int event)
+{
+	struct snd_soc_codec *codec = snd_soc_dapm_to_codec(w->dapm);
+	int on = !!SND_SOC_DAPM_EVENT_ON(event);
+
+	sp_asoc_pr_dbg("%s wname %s %s\n", __func__, w->name,
+		       get_event_name(event));
+	update_switch(codec, SDALHPL, on);
+
+	return 0;
+}
+
+static int hpr_sdar_event(struct snd_soc_dapm_widget *w,
+			  struct snd_kcontrol *kcontrol, int event)
+{
+	struct snd_soc_codec *codec = snd_soc_dapm_to_codec(w->dapm);
+	int on = !!SND_SOC_DAPM_EVENT_ON(event);
+
+	sp_asoc_pr_dbg("%s wname %s %s\n", __func__, w->name,
+		       get_event_name(event));
+	update_switch(codec, SDARHPR, on);
+
+	return 0;
 }
 
 static int hp_depop_event(struct snd_soc_dapm_widget *w,
@@ -2558,6 +2592,14 @@ static const struct snd_soc_dapm_widget sprd_codec_dapm_widgets[] = {
 	SND_SOC_DAPM_MIXER("HPR Mixer", SND_SOC_NOPM, 0, 0,
 		&hpr_mixer_controls[0],
 		ARRAY_SIZE(hpr_mixer_controls)),
+	SND_SOC_DAPM_PGA_S("HPL SDAL", SPRD_CODEC_HP_DALR_ORDER,
+		SND_SOC_NOPM,
+		0, 0, hpl_sdal_event,
+		SND_SOC_DAPM_PRE_PMU | SND_SOC_DAPM_PRE_PMD),
+	SND_SOC_DAPM_PGA_S("HPR SDAR", SPRD_CODEC_HP_DALR_ORDER,
+		SND_SOC_NOPM,
+		0, 0, hpr_sdar_event,
+		SND_SOC_DAPM_PRE_PMU | SND_SOC_DAPM_PRE_PMD),
 	SND_SOC_DAPM_PGA_S("HP DEPOP", SPRD_CODEC_DEPOP_ORDER,
 		SND_SOC_NOPM,
 		0, 0, hp_depop_event,
@@ -2651,8 +2693,6 @@ static const struct snd_soc_dapm_widget sprd_codec_dapm_widgets[] = {
 	 */
 	SND_SOC_DAPM_SWITCH("HP", SND_SOC_NOPM,
 			0, 0, &hp_jack_switch),
-	SND_SOC_DAPM_SWITCH("HPR Pin", SND_SOC_NOPM,
-			0, 0, &hpr_pin_switch),
 
 	SND_SOC_DAPM_MUX("Digital ADC In Sel", SND_SOC_NOPM, 0, 0,
 			 &dig_adc_in_sel),
@@ -2744,21 +2784,22 @@ static const struct snd_soc_dapm_route sprd_codec_intercon[] = {
 	{"DACL Switch", NULL, "DAC Gain"},
 	{"DACR Switch", NULL, "DAC Gain"},
 	{"HPL EAR Sel", NULL, "DACL Switch"},
-	{"HPL Path", "HPL", "HPL EAR Sel"},
+	{"DALR DC Offset", "HPL", "HPL EAR Sel"},
+	{"HPL Path", NULL, "DALR DC Offset"},
+	{"DACR Switch", NULL, "DALR DC Offset"},
 	{"HPL Mixer", "DACLHPL Switch", "HPL Path"},
 	{"HPR Mixer", "DACRHPR Switch", "DACR Switch"},
-	{"HP DEPOP", NULL, "HPL Mixer"},
-	{"HP DEPOP", NULL, "HPR Mixer"},
-	{"DALR DC Offset", NULL, "HP DEPOP"},
-	{"HP BUF Switch", NULL, "DALR DC Offset"},
-	{"HPL EAR Sel2", NULL, "HP BUF Switch"},
-	{"HPL Switch", "HPL", "HPL EAR Sel2"},
-	{"HPR Switch", NULL, "HP BUF Switch"},
+	{"HPL SDAL", NULL, "HPL Mixer"},
+	{"HPR SDAR", NULL, "HPR Mixer"},
+	{"HPL Switch", NULL, "HPL SDAL"},
+	{"HPR Switch", NULL, "HPR SDAR"},
 	{"HPL Gain", NULL, "HPL Switch"},
 	{"HPR Gain", NULL, "HPR Switch"},
-	{"HPR Pin", "Switch", "HPR Gain"},
-	{"HP Pin", NULL, "HPL Gain"},
-	{"HP Pin", NULL, "HPR Pin"},
+	{"HP DEPOP", NULL, "HPL Gain"},
+	{"HP DEPOP", NULL, "HPR Gain"},
+	{"HP BUF Switch", NULL, "HP DEPOP"},
+	{"HPL EAR Sel2", NULL, "HP BUF Switch"},
+	{"HP Pin", "HPL", "HPL EAR Sel2"},
 
 /* EAR */
 	{"RCV DEPOP", NULL, "CP"},
@@ -3264,6 +3305,8 @@ static const struct snd_kcontrol_new sprd_codec_snd_controls[] = {
 	SOC_ENUM_EXT("IVSENCE_DMIC_SEL", ivsence_dmic_sel_enum,
 		sprd_codec_ivsence_dmic_get,
 		sprd_codec_ivsence_dmic_put),
+        SOC_SINGLE_EXT("Audio Sense", 0, 0, INT_MAX, 0,
+        sprd_audio_sense_get, sprd_audio_sense_put),
 };
 
 static unsigned int sprd_codec_read(struct snd_soc_codec *codec,
@@ -3473,7 +3516,8 @@ static struct snd_soc_dai_ops sprd_codec_dai_ops = {
  * proc interface
  */
 
-#ifdef CONFIG_PROC_FS
+//#ifdef CONFIG_PROC_FS
+#if 0
 /* procfs interfaces for factory test: check if audio PA P/N is shorted. */
 static void pa_short_stat_proc_read(struct snd_info_entry *entry,
 				 struct snd_info_buffer *buffer)
@@ -3484,17 +3528,12 @@ static void pa_short_stat_proc_read(struct snd_info_entry *entry,
 		sprd_codec->cp_short_stat, sprd_codec->pa_short_stat);
 }
 
-#define CANNEL_DUMP_CODEC_REG 0
 static void sprd_codec_proc_read(struct snd_info_entry *entry,
 				 struct snd_info_buffer *buffer)
 {
 	struct sprd_codec_priv *sprd_codec = entry->private_data;
 	struct snd_soc_codec *codec = sprd_codec->codec;
 	int reg, ret;
-
-    #if CANNEL_DUMP_CODEC_REG
-    return;
-    #endif
 
 	ret = agdsp_access_enable();
 	if (ret) {
@@ -4191,6 +4230,7 @@ static int sprd_codec_ana_probe(struct platform_device *pdev)
 	/* Set global register accessing vars for headset. */
 	glb_vars.regmap = adi_rgmp;
 	glb_vars.codec_reg_offset = val;
+	/* yintang: marked for compiling */
 	sprd_headset_set_global_variables(&glb_vars);
 
 	/* Parsing configurations varying as machine. */

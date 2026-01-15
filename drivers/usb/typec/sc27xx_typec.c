@@ -19,6 +19,7 @@
 #include <linux/slab.h>
 #include <linux/of_gpio.h>
 #include <linux/gpio/consumer.h>
+#include <linux/usb/tcpm.h>
 
 /* registers definitions for controller REGS_TYPEC */
 #define SC27XX_EN			0x00
@@ -28,7 +29,14 @@
 #define SC27XX_INT_RAW			0x14
 #define SC27XX_INT_MASK			0x18
 #define SC27XX_STATUS			0x1c
+#define SC27XX_TCCDE_CNT		0x20
 #define SC27XX_RTRIM			0x3c
+#define SC27XX_DBG1			0x60
+
+/* SC27XX_DBG1 */
+#define SC27XX_CC_ORIENTATION_MASK			GENMASK(7, 0)
+#define SC27XX_CC_1_DETECT		BIT(0)
+#define SC27XX_CC_2_DETECT		BIT(4)
 
 /* SC27XX_TYPEC_EN */
 #define SC27XX_TYPEC_USB20_ONLY		BIT(4)
@@ -54,13 +62,13 @@
 #define SC27XX_STATE_MASK		GENMASK(4, 0)
 #define SC27XX_EVENT_MASK		GENMASK(9, 0)
 
-#define SC27XX_EFUSE_SHIFT_DEFAULT	6
-#define SC2730_EFUSE_SHIFT		0
+#define SC2730_EFUSE_CC1_SHIFT		5
+#define SC2730_EFUSE_CC2_SHIFT		0
+#define SC2721_EFUSE_CC1_SHIFT		11
+#define SC2721_EFUSE_CC2_SHIFT		6
 
-#define SC27XX_CC1_MASK(n)		GENMASK((n) + 9, (n) + 5)
-#define SC27XX_CC2_MASK(n)		GENMASK((n) + 4, (n))
-#define SC27XX_CC1_SHIFT(n)		(5 + (n))
-#define SC27XX_CC2_SHIFT		5
+#define SC27XX_CC_MASK(n)		GENMASK((n) + 4, (n))
+#define SC27XX_CC_SHIFT(n)		(n)
 
 /* sc2721 registers definitions for controller REGS_TYPEC */
 #define SC2721_EN			0x00
@@ -73,6 +81,18 @@
 
 #define SC2721_STATE_MASK		GENMASK(3, 0)
 #define SC2721_EVENT_MASK		GENMASK(6, 0)
+
+bool typec_int_status=0;
+
+/* modify sc2730 tcc debunce */
+#define SC27XX_TCC_DEBOUNCE_CNT		0xc7f
+
+/* sc2730 registers definitions for controller REGS_TYPEC */
+#define SC2730_TYPEC_PD_CFG		0x08
+/* SC2730_TYPEC_PD_CFG */
+#define SC27XX_VCONN_LDO_EN		BIT(13)
+#define SC27XX_VCONN_LDO_RDY		BIT(12)
+
 
 enum sc27xx_typec_connection_state {
 	SC27XX_DETACHED_SNK,
@@ -96,7 +116,8 @@ enum sc27xx_typec_connection_state {
 };
 
 struct sprd_typec_variant_data {
-	u32 efuse_shift;
+	u32 efuse_cc1_shift;
+	u32 efuse_cc2_shift;
 	u32 int_en;
 	u32 int_clr;
 	u32 mode;
@@ -107,7 +128,8 @@ struct sprd_typec_variant_data {
 };
 
 static const struct sprd_typec_variant_data sc2730_data = {
-	.efuse_shift = SC2730_EFUSE_SHIFT,
+	.efuse_cc1_shift = SC2730_EFUSE_CC1_SHIFT,
+	.efuse_cc2_shift = SC2730_EFUSE_CC2_SHIFT,
 	.int_en = SC27XX_INT_EN,
 	.int_clr = SC27XX_INT_CLR,
 	.mode = SC27XX_MODE,
@@ -118,7 +140,8 @@ static const struct sprd_typec_variant_data sc2730_data = {
 };
 
 static const struct sprd_typec_variant_data sc2721_data = {
-	.efuse_shift = SC27XX_EFUSE_SHIFT_DEFAULT,
+	.efuse_cc1_shift = SC2721_EFUSE_CC1_SHIFT,
+	.efuse_cc2_shift = SC2721_EFUSE_CC2_SHIFT,
 	.int_en = SC2721_EN,
 	.int_clr = SC2721_CLR,
 	.mode = SC2721_MODE,
@@ -151,6 +174,9 @@ static int sc27xx_typec_connect(struct sc27xx_typec *sc, u32 status)
 	enum typec_role power_role = TYPEC_SOURCE;
 	enum typec_role vconn_role = TYPEC_SOURCE;
 	struct typec_partner_desc desc;
+	enum typec_cc_polarity cc_polarity;
+	u32 val;
+	int ret;
 
 	if (sc->partner)
 		return 0;
@@ -204,6 +230,28 @@ static int sc27xx_typec_connect(struct sc27xx_typec *sc, u32 status)
 	default:
 		break;
 	}
+
+	ret = regmap_read(sc->regmap, sc->base + SC27XX_DBG1, &val);
+	if (ret < 0) {
+		dev_err(sc->dev, "failed to read DBG1 register.\n");
+		return ret;
+	}
+	val &= SC27XX_CC_ORIENTATION_MASK;
+	dev_info(sc->dev, "typec cc orientation: %d\n", val);
+
+	switch (val) {
+	case SC27XX_CC_1_DETECT:
+		cc_polarity = TYPEC_POLARITY_CC1;
+		break;
+	case SC27XX_CC_2_DETECT:
+		cc_polarity = TYPEC_POLARITY_CC2;
+		break;
+	default:
+		cc_polarity = TYPEC_POLARITY_CC1;
+		break;
+	}
+	typec_set_cc_polarity_role(sc->port, cc_polarity);
+
 
 	return 0;
 }
@@ -260,6 +308,7 @@ static irqreturn_t sc27xx_typec_interrupt(int irq, void *data)
 	u32 event;
 	int ret;
 
+
 	ret = regmap_read(sc->regmap, sc->base + SC27XX_INT_MASK, &event);
 	if (ret)
 		return ret;
@@ -273,10 +322,12 @@ static irqreturn_t sc27xx_typec_interrupt(int irq, void *data)
 	sc->state &= sc->var_data->state_mask;
 
 	if (event & SC27XX_ATTACH_INT) {
+		typec_int_status=1;
 		ret = sc27xx_typec_connect(sc, sc->state);
 		if (ret)
 			dev_warn(sc->dev, "failed to register partner\n");
 	} else if (event & SC27XX_DETACH_INT) {
+		typec_int_status=0;
 		sc27xx_typec_disconnect(sc, sc->state);
 	}
 
@@ -326,6 +377,17 @@ static int sc27xx_typec_enable(struct sc27xx_typec *sc)
 			return ret;
 	}
 
+	/* modify sc2730 tcc debounce to 100ms while PD signal occur at 150ms
+	 * and effect tccde reginize.Reason is hardware signal and clk not
+	 * accurate.
+	 */
+	if (sc->var_data->efuse_cc2_shift == SC2730_EFUSE_CC2_SHIFT) {
+		ret = regmap_write(sc->regmap, sc->base + SC27XX_TCCDE_CNT,
+				SC27XX_TCC_DEBOUNCE_CNT);
+		if (ret)
+			return ret;
+	}
+
 	/* Enable typec interrupt and enable typec */
 	ret = regmap_read(sc->regmap, sc->base + sc->var_data->int_en, &val);
 	if (ret)
@@ -342,14 +404,14 @@ static const u32 sc27xx_typec_cable[] = {
 	EXTCON_NONE,
 };
 
-static int sc27xx_typec_get_efuse(struct sc27xx_typec *sc)
+static int sc27xx_typec_get_cc1_efuse(struct sc27xx_typec *sc)
 {
 	struct nvmem_cell *cell;
-	int calib_data = 0;
+	u32 calib_data = 0;
 	void *buf;
 	size_t len = 0;
 
-	cell = nvmem_cell_get(sc->dev, "cc_calib");
+	cell = nvmem_cell_get(sc->dev, "typec_cc1_cal");
 	if (IS_ERR(cell))
 		return PTR_ERR(cell);
 
@@ -360,21 +422,52 @@ static int sc27xx_typec_get_efuse(struct sc27xx_typec *sc)
 		return PTR_ERR(buf);
 
 	memcpy(&calib_data, buf, min(len, sizeof(u32)));
+	calib_data = (calib_data & SC27XX_CC_MASK(sc->var_data->efuse_cc1_shift))
+			>> SC27XX_CC_SHIFT(sc->var_data->efuse_cc1_shift);
 	kfree(buf);
 
 	return calib_data;
 }
 
-static int typec_set_rtrim(struct sc27xx_typec *sc, unsigned long efuse_offset)
+static int sc27xx_typec_get_cc2_efuse(struct sc27xx_typec *sc)
 {
-	int calib_data = sc27xx_typec_get_efuse(sc);
+	struct nvmem_cell *cell;
+	u32 calib_data = 0;
+	void *buf;
+	size_t len = 0;
+
+	cell = nvmem_cell_get(sc->dev, "typec_cc2_cal");
+	if (IS_ERR(cell))
+		return PTR_ERR(cell);
+
+	buf = nvmem_cell_read(cell, &len);
+	nvmem_cell_put(cell);
+
+	if (IS_ERR(buf))
+		return PTR_ERR(buf);
+
+	memcpy(&calib_data, buf, min(len, sizeof(u32)));
+	calib_data = (calib_data & SC27XX_CC_MASK(sc->var_data->efuse_cc2_shift))
+			>> SC27XX_CC_SHIFT(sc->var_data->efuse_cc2_shift);
+	kfree(buf);
+
+	return calib_data;
+}
+
+static int typec_set_rtrim(struct sc27xx_typec *sc)
+{
+	int calib_cc1;
+	int calib_cc2;
 	u32 rtrim;
 
-	if (calib_data < 0)
-		return calib_data;
+	calib_cc1 = sc27xx_typec_get_cc1_efuse(sc);
+	if (calib_cc1 < 0)
+		return calib_cc1;
+	calib_cc2 = sc27xx_typec_get_cc2_efuse(sc);
+	if (calib_cc2 < 0)
+		return calib_cc2;
 
-	rtrim = (calib_data & SC27XX_CC1_MASK(efuse_offset)) >> SC27XX_CC1_SHIFT(efuse_offset);
-	rtrim |= ((calib_data & SC27XX_CC2_MASK(efuse_offset)) >> efuse_offset) << SC27XX_CC2_SHIFT;
+	rtrim = calib_cc1 | calib_cc2<<5;
 
 	return regmap_write(sc->regmap, sc->base + SC27XX_RTRIM, rtrim);
 }
@@ -470,7 +563,7 @@ static int sc27xx_typec_probe(struct platform_device *pdev)
 		return -ENODEV;
 	}
 
-	ret = typec_set_rtrim(sc, sc->var_data->efuse_shift);
+	ret = typec_set_rtrim(sc);
 	if (ret < 0) {
 		dev_err(sc->dev, "failed to set typec rtrim %d\n", ret);
 		goto error;

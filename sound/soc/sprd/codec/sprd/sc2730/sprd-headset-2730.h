@@ -124,6 +124,13 @@ struct sprd_headset_platform_data {
 	u32 voltage_headmicbias;
 	u32 sprd_adc_gnd;
 	u32 sprd_half_adc_gnd;
+//not playing
+	u32 sprd_adc_gnd_1;
+	u32 sprd_half_adc_gnd_1;
+//playing
+	u32 sprd_adc_gnd_2;
+	u32 sprd_half_adc_gnd_2;
+//
 	u32 sprd_one_half_adc_gnd;
 	u32 sprd_stable_value;
 	u32 coefficient;
@@ -216,6 +223,8 @@ struct sprd_headset {
 	bool current_polling_state;
 	struct  headset_power_manager power_manager;
 	struct delayed_work btn_work;
+	struct delayed_work det_disbutton_work;
+        struct workqueue_struct *det_disbutton_work_q;
 	enum headset_hw_status hdst_hw_status;
 	enum snd_jack_types hdst_type_status;
 	struct wakeup_source hdst_detect_wakelock;
@@ -287,10 +296,12 @@ struct sprd_headset {
 	int plug_state_last;
 	bool adc_big_scale;
 	bool typec_attached;
+	bool lineout_status;
 	struct notifier_block typec_plug_nb;
 	struct extcon_dev *edev;
 	unsigned int codec_intc;
 	unsigned long time_after_4pole_report;
+	bool disable_button;
 };
 
 struct sprd_headset_global_vars {
@@ -310,5 +321,12 @@ void sprd_codec_intc_irq(struct snd_soc_codec *codec, u32 int_shadow);
 void headset_set_audio_state(bool enable);
 #endif
 void sprd_codec_intc_enable(bool enable, u32 irq_bit);
+
+int sprd_audio_sense_put(
+    struct snd_kcontrol *kcontrol,
+    struct snd_ctl_elem_value *ucontrol);
+int sprd_audio_sense_get(
+    struct snd_kcontrol *kcontrol,
+    struct snd_ctl_elem_value *ucontrol);
 
 #endif

@@ -2,6 +2,7 @@
  * max8998_charger.c - Power supply consumer driver for the Maxim 8998/LP3974
  *
  *  Copyright (C) 2009-2010 Samsung Electronics
+ *  MyungJoo Ham <myungjoo.ham@samsung.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -196,5 +197,6 @@ static struct platform_driver max8998_battery_driver = {
 module_platform_driver(max8998_battery_driver);
 
 MODULE_DESCRIPTION("MAXIM 8998 battery control driver");
+MODULE_AUTHOR("MyungJoo Ham <myungjoo.ham@samsung.com>");
 MODULE_LICENSE("GPL");
 MODULE_ALIAS("platform:max8998-battery");

@@ -1,5 +1,6 @@
 /*
  * Generic battery driver code using IIO
+ * Copyright (C) 2012, Anish Kumar <anish198519851985@gmail.com>
  * based on jz4740-battery.c
  * based on s3c_adc_battery.c
  *
@@ -422,5 +423,6 @@ static struct platform_driver gab_driver = {
 };
 module_platform_driver(gab_driver);
 
+MODULE_AUTHOR("anish kumar <anish198519851985@gmail.com>");
 MODULE_DESCRIPTION("generic battery driver using IIO");
 MODULE_LICENSE("GPL");

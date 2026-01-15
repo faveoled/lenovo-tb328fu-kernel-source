@@ -20,23 +20,29 @@
 #include <video/mipi_display.h>
 #include <video/of_display_timing.h>
 #include <video/videomode.h>
-#include <linux/hardware_info.h>
-#include <linux/tp_pannel_notifier.h>
-#include <linux/update_tpfw_notifier.h>
 
 #include "sprd_dpu.h"
 #include "sprd_panel.h"
 #include "dsi/sprd_dsi_api.h"
 #include "sysfs/sysfs_display.h"
-#include "oplus_engine/oplus_display_private_api.h"
+#include "backlight_map.h"
+
+int Double_click_flag=0;
+EXPORT_SYMBOL(Double_click_flag);
+
 #define SPRD_MIPI_DSI_FMT_DSC 0xff
 static DEFINE_MUTEX(panel_lock);
-extern int g_gesture;
-extern int sm5109_set_voltage(unsigned int vol);
+extern int Bias_Power_writei2c_byte(u8 reg, u8 value);
+extern int Backlight_Current_writei2c_byte(u8 reg, u8 value);
+static int sprd_oled_set_brightness(struct backlight_device *bdev);
 
-static int pre_brightness = 0;
+static struct backlight_device *bl_node = NULL;
+static int FristSet_brightness = 0;     //Set the backlight for the first time after waking up
+static int dimming_isopen = 0;			//Whether the dimming function needs to be turned on
 
 const char *lcd_name;
+EXPORT_SYMBOL(lcd_name);
+
 static int __init lcd_name_get(char *str)
 {
 	if (str != NULL)
@@ -45,21 +51,6 @@ static int __init lcd_name_get(char *str)
 	return 0;
 }
 __setup("lcd_name=", lcd_name_get);
-
-static int project_id;
-static int __init get_project_id(char *str)
-{
-	if (!str)
-		return 0;
-
-	if (strstr(str, "S19610") || strstr(str, "S19612")){
-		project_id = 1;
-	} else if (strstr(str, "S19615") || strstr(str, "S19617")){
-		project_id = 2;
-	}
-	return 0;
-}
-__setup("androidboot.board_id=", get_project_id);
 
 static inline struct sprd_panel *to_sprd_panel(struct drm_panel *panel)
 {
@@ -80,7 +71,7 @@ static int sprd_panel_send_cmds(struct mipi_dsi_device *dsi,
 
 	while (size > 0) {
 		len = (cmds->wc_h << 8) | cmds->wc_l;
-
+		//mdelay(1);
 		if (panel->info.use_dcs)
 			mipi_dsi_dcs_write_buffer(dsi, cmds->payload, len);
 		else
@@ -95,45 +86,6 @@ static int sprd_panel_send_cmds(struct mipi_dsi_device *dsi,
 	return 0;
 }
 
-void sprd_cabc_set_mode(struct sprd_panel *panel, unsigned int cabc_mode)
-{
-	mutex_lock(&panel_lock);
-	if (!panel->is_enabled) {
-		mutex_unlock(&panel_lock);
-		DRM_WARN("panel has been powered off\n");
-		return;
-	}
-
-	DRM_INFO("%s cabc_mode: %d\n", __func__, cabc_mode);
-	switch (cabc_mode) {
-	case CABC_MODE_OFF:
-		sprd_panel_send_cmds(panel->slave,
-			panel->info.cmds[CMD_CODE_CABC_OFF],
-			panel->info.cmds_len[CMD_CODE_CABC_OFF]);
-		break;
-	case CABC_MODE_UI:
-		sprd_panel_send_cmds(panel->slave,
-			panel->info.cmds[CMD_CODE_CABC_UI],
-			panel->info.cmds_len[CMD_CODE_CABC_UI]);
-		break;
-	case CABC_MODE_STILL:
-		sprd_panel_send_cmds(panel->slave,
-			panel->info.cmds[CMD_CODE_CABC_STILL],
-			panel->info.cmds_len[CMD_CODE_CABC_STILL]);
-		break;
-	case CABC_MODE_MOVING:
-		sprd_panel_send_cmds(panel->slave,
-			panel->info.cmds[CMD_CODE_CABC_MOVING],
-			panel->info.cmds_len[CMD_CODE_CABC_MOVING]);
-		break;
-	default:
-		DRM_INFO("%s invalid cabc mode\n", __func__);
-		break;
-	}
-
-	mutex_unlock(&panel_lock);
-}
-
 static int sprd_panel_unprepare(struct drm_panel *p)
 {
 	struct sprd_panel *panel = to_sprd_panel(p);
@@ -141,18 +93,7 @@ static int sprd_panel_unprepare(struct drm_panel *p)
 	int items, i;
 
 	DRM_INFO("%s()\n", __func__);
-
-	if (!g_gesture){
-		if (panel->info.reset_gpio && !strstr(lcd_name, "lcd_icnl9911c")) {
-			items = panel->info.rst_off_seq.items;
-			timing = panel->info.rst_off_seq.timing;
-			for (i = 0; i < items; i++) {
-				gpiod_direction_output(panel->info.reset_gpio,
-							timing[i].level);
-				mdelay(timing[i].delay);
-			}
-		}
-
+	if(Double_click_flag == 0){
 		if (panel->info.avee_gpio) {
 			gpiod_direction_output(panel->info.avee_gpio, 0);
 			mdelay(5);
@@ -163,12 +104,24 @@ static int sprd_panel_unprepare(struct drm_panel *p)
 			mdelay(5);
 		}
 
-		regulator_disable(panel->supply);
+		if (panel->info.reset_gpio) {
+			items = panel->info.rst_off_seq.items;
+			timing = panel->info.rst_off_seq.timing;
+			for (i = 0; i < items; i++) {
+				gpiod_direction_output(panel->info.reset_gpio,
+							timing[i].level);
+				mdelay(timing[i].delay);
+			}
+		}
 	}
+	else
+		DRM_INFO("Enter double click wake up\n");
+	
+	
+	regulator_disable(panel->supply);
+
 	return 0;
 }
-
-extern void fts_tp_reset_pin(int enable);
 
 static int sprd_panel_prepare(struct drm_panel *p)
 {
@@ -178,51 +131,32 @@ static int sprd_panel_prepare(struct drm_panel *p)
 
 	DRM_INFO("%s()\n", __func__);
 
-	if (!g_gesture){
-		ret = regulator_enable(panel->supply);
-		if (ret < 0)
-			DRM_ERROR("enable lcd regulator failed\n");
+	ret = regulator_enable(panel->supply);
+	if (ret < 0)
+		DRM_ERROR("enable lcd regulator failed\n");
 
-		if (strstr(lcd_name, "ft8006s_holitech") != NULL) {
-			if (panel->info.reset_gpio) {
-				gpiod_direction_output(panel->info.reset_gpio,0);
-			}
-			fts_tp_reset_pin(0);
-		 }
+	if (panel->info.avdd_gpio) {
+		gpiod_direction_output(panel->info.avdd_gpio, 1);
+		Bias_Power_writei2c_byte(0x00,0x11);		//5.7V
+		mdelay(5);
+	}
 
-		if (panel->info.avdd_gpio) {
-			gpiod_direction_output(panel->info.avdd_gpio, 1);
-			mdelay(5);
-		}
+	if (panel->info.avee_gpio) {
+		gpiod_direction_output(panel->info.avee_gpio, 1);
+		Bias_Power_writei2c_byte(0x01,0x11);		//-5.7V
+		mdelay(5);
+	}
 
-		if (panel->info.avee_gpio) {
-			gpiod_direction_output(panel->info.avee_gpio, 1);
-			mdelay(12);
-		}
-
-		sm5109_set_voltage(6000); // set lcd bias voltage 6V
-
-		if (panel->info.reset_gpio) {
-			items = panel->info.rst_on_seq.items;
-			timing = panel->info.rst_on_seq.timing;
-			for (i = 0; i < items; i++) {
-				gpiod_direction_output(panel->info.reset_gpio,
-							timing[i].level);
-				mdelay(timing[i].delay);
-				if (strstr(lcd_name, "ft8006s_holitech") != NULL && timing[i].level == 0) {
-					fts_tp_reset_pin(1);
-					mdelay(2);
-				}
-			}
+	if (panel->info.reset_gpio) {
+		items = panel->info.rst_on_seq.items;
+		timing = panel->info.rst_on_seq.timing;
+		for (i = 0; i < items; i++) {
+			gpiod_direction_output(panel->info.reset_gpio,
+						timing[i].level);
+			mdelay(timing[i].delay);
 		}
 	}
-	
-	//tp resume
-	if (strstr(lcd_name, "lcd_ili9882q_skyworth") || strstr(lcd_name, "lcd_ili7806s_txd"))
-	{
-		tp_pannel_notifier_call_chain(TOUCHSCREEN_RESUME,NULL);
-	}
-	
+
 	return 0;
 }
 
@@ -232,6 +166,7 @@ static int sprd_panel_disable(struct drm_panel *p)
 
 	DRM_INFO("%s()\n", __func__);
 
+	//mutex_lock(&panel_lock);
 	/*
 	 * FIXME:
 	 * The cancel work should be executed before DPU stop,
@@ -246,21 +181,29 @@ static int sprd_panel_disable(struct drm_panel *p)
 	}
 
 	mutex_lock(&panel_lock);
+
 	if (panel->backlight) {
 		panel->backlight->props.power = FB_BLANK_POWERDOWN;
 		panel->backlight->props.state |= BL_CORE_FBBLANK;
 		backlight_update_status(panel->backlight);
 	}
-	//tp suspend
-	if (strstr(lcd_name, "lcd_ili9882q_skyworth") || strstr(lcd_name, "lcd_ili7806s_txd"))
-	{
-		tp_pannel_notifier_call_chain(TOUCHSCREEN_SUSPEND,NULL);
-		DRM_INFO("%s() notify ilitek_tp into suspend\n", __func__);
-		msleep(5);
+
+	if(panel->info.BL_gpio){
+		gpiod_direction_output(panel->info.BL_gpio, 0);
+		FristSet_brightness = 0;
+		mdelay(25);
 	}
-	sprd_panel_send_cmds(panel->slave,
-			     panel->info.cmds[CMD_CODE_SLEEP_IN],
-			     panel->info.cmds_len[CMD_CODE_SLEEP_IN]);
+
+	if(Double_click_flag == 0){
+		sprd_panel_send_cmds(panel->slave,
+				     panel->info.cmds[CMD_CODE_SLEEP_IN_WITHOUT_GESTURE],
+				     panel->info.cmds_len[CMD_CODE_SLEEP_IN_WITHOUT_GESTURE]);
+	}else{
+		sprd_panel_send_cmds(panel->slave,
+				     panel->info.cmds[CMD_CODE_SLEEP_IN_WITH_GESTURE],
+				     panel->info.cmds_len[CMD_CODE_SLEEP_IN_WITH_GESTURE]);
+	}
+
 	panel->is_enabled = false;
 	mutex_unlock(&panel_lock);
 
@@ -290,8 +233,10 @@ static int sprd_panel_enable(struct drm_panel *p)
 		panel->esd_work_pending = true;
 	}
 
+	FristSet_brightness = 1;
+	dimming_isopen = 0;
+
 	panel->is_enabled = true;
-	panel->is_shutdown = false;
 	mutex_unlock(&panel_lock);
 
 	return 0;
@@ -376,7 +321,16 @@ static const struct drm_panel_funcs sprd_panel_funcs = {
 static int sprd_panel_esd_check(struct sprd_panel *panel)
 {
 	struct panel_info *info = &panel->info;
+	int i = 0,j;
 	u8 read_val = 0;
+	u8 read_buf[4] = {0x00};
+
+	mutex_lock(&panel_lock);
+	if (!panel->is_enabled) {
+		DRM_INFO("panel is not enabled, skip esd check\n");
+		mutex_unlock(&panel_lock);
+		return 0;
+	}
 
 	/* FIXME: we should enable HS cmd tx here */
 	mipi_dsi_set_maximum_return_packet_size(panel->slave, 1);
@@ -388,10 +342,41 @@ static int sprd_panel_esd_check(struct sprd_panel *panel)
 	 * Should we support multi-registers check in the future?
 	 */
 	if (read_val != info->esd_check_val) {
-		DRM_ERROR("esd check failed, read value = 0x%02x\n",
-			  read_val);
+		DRM_WARN("esd check failed, reg 0x%x value = 0x%02x,should be 0x%x\n",
+			  info->esd_check_reg, read_val, info->esd_check_val);
+		mutex_unlock(&panel_lock);
 		return -EINVAL;
 	}
+
+	while(i < (info->esd_check_num - 1)){
+		mipi_dsi_set_maximum_return_packet_size(panel->slave, info->esd_check[i].items);
+		mipi_dsi_dcs_read(panel->slave,
+							info->esd_check[i].esd_reg_val[0].reg,
+							read_buf,
+							info->esd_check[i].items);
+
+		for(j = 0;j < info->esd_check[i].items;j++)
+		{
+
+			if((info->esd_check[i].esd_reg_val[0].reg == 0x45) && (read_buf[j] == 0x00 || read_buf[j] == 0x08 || read_buf[j] == 0x0F)){
+				DRM_WARN("esd 45 This val is normal no need recovery\n");
+				continue;
+			}
+
+			if(info->esd_check[i].esd_reg_val[j].val != read_buf[j]){
+				DRM_WARN("panel esd check failed, reg 0x%x num %d value 0x%x error,should be 0x%x \n",
+					info->esd_check[i].esd_reg_val[0].reg, j, read_buf[j],info->esd_check[i].esd_reg_val[j].val);
+
+				mutex_unlock(&panel_lock);
+				return -EINVAL;
+			}
+
+		}
+
+		i++;
+		memset(read_buf,0x00,sizeof(read_buf));
+	}
+	mutex_unlock(&panel_lock);
 
 	return 0;
 }
@@ -452,15 +437,15 @@ static int sprd_panel_te_check(struct sprd_panel *panel)
 
 	return ret < 0 ? ret : 0;
 }
+
 static void sprd_panel_esd_work_func(struct work_struct *work)
 {
 	struct sprd_panel *panel = container_of(work, struct sprd_panel,
 						esd_work.work);
 	struct panel_info *info = &panel->info;
 	int ret;
-	u8 buf[] = {0x39, 0x00, 0x00, 0x03, 0x51, 0x00, 0x00};
-	struct dsi_cmd_desc *brightness_cmd = (struct dsi_cmd_desc *)buf;
 
+	//DRM_INFO("%s\n",__func__);
 	if (info->esd_check_mode == ESD_MODE_REG_CHECK)
 		ret = sprd_panel_esd_check(panel);
 	else if (info->esd_check_mode == ESD_MODE_TE_CHECK)
@@ -487,16 +472,10 @@ static void sprd_panel_esd_work_func(struct work_struct *work)
 		DRM_INFO("====== esd recovery start ========\n");
 		funcs->disable(encoder);
 		funcs->enable(encoder);
-		if (strstr(lcd_name, "lcd_hx83102d_skyworth"))
-			update_tpfw_notifier_call_chain(2, NULL);
-		mutex_lock(&panel_lock);
-		if (panel->is_enabled) {
-			brightness_cmd->payload[1] = (pre_brightness >> 8) & 0xFF;
-			brightness_cmd->payload[2] = pre_brightness & 0xFF;
-			sprd_panel_send_cmds(panel->slave,
-					brightness_cmd, 3);
-		}
-		mutex_unlock(&panel_lock);
+
+		if(bl_node != NULL)
+			sprd_oled_set_brightness(bl_node);
+
 		DRM_INFO("======= esd recovery end =========\n");
 	} else
 		schedule_delayed_work(&panel->esd_work,
@@ -523,6 +502,12 @@ static int sprd_panel_gpio_request(struct device *dev,
 	if (IS_ERR_OR_NULL(panel->info.reset_gpio))
 		DRM_WARN("can't get panel reset gpio: %ld\n",
 				 PTR_ERR(panel->info.reset_gpio));
+
+	panel->info.BL_gpio = devm_gpiod_get_optional(dev,
+					"BL", GPIOD_ASIS);
+	if (IS_ERR_OR_NULL(panel->info.BL_gpio))
+		DRM_WARN("can't get panel BL_gpio: %ld\n",
+				 PTR_ERR(panel->info.BL_gpio));
 
 	return 0;
 }
@@ -573,6 +558,65 @@ static int of_parse_reset_seq(struct device_node *np,
 
 	info->rst_off_seq.items = bytes / 8;
 	info->rst_off_seq.timing = (struct gpio_timing *)p;
+
+	return 0;
+}
+
+static int of_parse_ESD_array(struct device_node *np,
+				struct panel_info *info)
+{
+	struct property *prop;
+	int bytes, rc, i;
+	u32 *p;
+
+	prop = of_find_property(np, "sprd,esd-check-reg-val1", &bytes);
+	if (!prop) {
+		DRM_ERROR("sprd,esd-check-reg-val1 property not found\n");
+		return -EINVAL;
+	}
+
+	p = kzalloc(bytes, GFP_KERNEL);
+	if (!p)
+		return -ENOMEM;
+	rc = of_property_read_u32_array(np, "sprd,esd-check-reg-val1",
+					p, bytes / 4);
+	if (rc) {
+		DRM_ERROR("parse sprd,esd-check-reg-val1 failed\n");
+		kfree(p);
+		return rc;
+	}
+
+	info->esd_check[0].items = bytes / 8;
+	info->esd_check[0].esd_reg_val = (struct ESD_Reg_Val *)p;
+	for(i = 0;i < info->esd_check[0].items;i++)
+	{
+		DRM_INFO("panel reg = 0x%x val = 0x%x\n",info->esd_check[0].esd_reg_val[i].reg,info->esd_check[0].esd_reg_val[i].val);
+	}
+
+	prop = of_find_property(np, "sprd,esd-check-reg-val2", &bytes);
+	if (!prop) {
+		DRM_ERROR("sprd,esd-check-reg-val2 property not found\n");
+		return -EINVAL;
+	}
+
+	p = kzalloc(bytes, GFP_KERNEL);
+	if (!p)
+		return -ENOMEM;
+	rc = of_property_read_u32_array(np, "sprd,esd-check-reg-val2",
+					p, bytes / 4);
+	if (rc) {
+		DRM_ERROR("parse sprd,esd-check-reg-val2 failed\n");
+		kfree(p);
+		return rc;
+	}
+
+	info->esd_check[1].items = bytes / 8;
+	info->esd_check[1].esd_reg_val = (struct ESD_Reg_Val *)p;
+
+	for(i = 0;i < info->esd_check[1].items;i++)
+	{
+		DRM_INFO("panel reg = 0x%x val = 0x%x\n",info->esd_check[1].esd_reg_val[i].reg,info->esd_check[1].esd_reg_val[i].val);
+	}
 
 	return 0;
 }
@@ -661,23 +705,12 @@ static int of_parse_oled_cmds(struct sprd_oled *oled,
 	return 0;
 }
 
-static const u8 lowest_brightness_cmd[] = {
-	0x39, 0x00, 0x00, 0x03, 0x51, 0x00, 0x0C
-};
-
-static const u8 switch_to_pageF[] = {
-	0x39, 0x00, 0x00, 0x04, 0xFF, 0x98, 0x82, 0x0F
-};
-
-static const u8 switch_to_page0[] = {
-	0x39, 0x00, 0x00, 0x04, 0xFF, 0x98, 0x82, 0x00
-};
-
 static int sprd_oled_set_brightness(struct backlight_device *bdev)
 {
-	int brightness;
+	int brightness,set_Brightness;
 	struct sprd_oled *oled = bl_get_data(bdev);
 	struct sprd_panel *panel = oled->panel;
+	bl_node = bdev;
 
 	mutex_lock(&panel_lock);
 	if (!panel->is_enabled) {
@@ -686,38 +719,29 @@ static int sprd_oled_set_brightness(struct backlight_device *bdev)
 		return -ENXIO;
 	}
 
-	if (pre_brightness == 0) {
-		mdelay(20);
-		if (strstr(lcd_name, "ft8006s_holitech"))
-			mdelay(10);
-	}
-
 	brightness = bdev->props.brightness;
-	if (strstr(lcd_name, "ft8006s_holitech") && brightness == 16)
-		brightness = 12;
-	if (strstr(lcd_name, "ili7806s_txd") && brightness == 16)
-		brightness = 11;
-	DRM_INFO("%s brightness: %d, pre_brightness:%d\n", __func__, brightness,pre_brightness);
-	pre_brightness = brightness;
+	set_Brightness = backlight_map[brightness];
+	
+	DRM_INFO("%s = %d,set_Brightness = %d\n", __func__, brightness,set_Brightness);
+	if(panel->info.BL_gpio && FristSet_brightness == 1){
+		DRM_INFO("brightness is on\n");
+		gpiod_direction_output(panel->info.BL_gpio, 1);
+	}
+	Backlight_Current_writei2c_byte(0x19,0xE0);		//Limiting maximum current < 90mA by I2C
 
-	sprd_panel_send_cmds(panel->slave,
-			     panel->info.cmds[CMD_OLED_REG_LOCK],
-			     panel->info.cmds_len[CMD_OLED_REG_LOCK]);
-	if (strstr(lcd_name, "ili9882q_skyworth"))
+	if(!strcmp(lcd_name,"lcd_ft8201_boe_mipi_hdp_vdo") || (brightness < 8 && FristSet_brightness == 1)){
 		sprd_panel_send_cmds(panel->slave,
-			(const void*)switch_to_page0, sizeof(switch_to_page0));
+				     panel->info.cmds[CMD_OLED_REG_UNLOCK],
+				     panel->info.cmds_len[CMD_OLED_REG_UNLOCK]);
+	}
 
 	if (oled->cmds_total == 1) {
 		if (oled->cmds[0]->wc_l == 3) {
-			oled->cmds[0]->payload[1] = brightness >> 8;
-			oled->cmds[0]->payload[2] = brightness & 0xFF;
+			oled->cmds[0]->payload[1] = set_Brightness >> 4;
+			oled->cmds[0]->payload[2] = set_Brightness << 4;
 		} else
 			oled->cmds[0]->payload[1] = brightness;
-		if (strstr(lcd_name,"ft8006s_holitech")) {
-			brightness = brightness/4;
-			oled->cmds[0]->payload[1] = (brightness & 0x3fc) >> 2;
-			oled->cmds[0]->payload[2] = (brightness & 0x3) << 2;
-		}
+
 		sprd_panel_send_cmds(panel->slave,
 			     oled->cmds[0],
 			     oled->cmd_len);
@@ -729,19 +753,23 @@ static int sprd_oled_set_brightness(struct backlight_device *bdev)
 			     oled->cmds[brightness],
 			     oled->cmd_len);
 	}
-	if (strstr(lcd_name, "hx83102d_skyworth") && brightness == 16 && project_id == 2)
-		sprd_panel_send_cmds(panel->slave,
-			(const void*)lowest_brightness_cmd, sizeof(lowest_brightness_cmd));
-	if (strstr(lcd_name, "ili9882q_skyworth"))
-		sprd_panel_send_cmds(panel->slave,
-			(const void*)switch_to_pageF, sizeof(switch_to_pageF));
 
-	sprd_panel_send_cmds(panel->slave,
-			     panel->info.cmds[CMD_OLED_REG_UNLOCK],
-			     panel->info.cmds_len[CMD_OLED_REG_UNLOCK]);
 
+	/*
+	  By bug AALTO-533,In low brightness, the backlight will shake at the moment when the screen is bright.
+	  We need to turn off the dimming function when the backlight is set for the first time
+	  after the screen is bright to ensure that this problem will not occur.
+	  Then turn on the dimming function in the process of adjusting the backlight later, which only needs to be done once.
+	*/
+	if(!strcmp(lcd_name,"lcd_ft8201_boe_mipi_hdp_vdo") || (dimming_isopen == 0 && FristSet_brightness == 0)){
+		DRM_INFO("open dimming function\n");
+		sprd_panel_send_cmds(panel->slave,
+				     panel->info.cmds[CMD_OLED_REG_LOCK],
+				     panel->info.cmds_len[CMD_OLED_REG_LOCK]);
+		dimming_isopen = 1;
+	}
 	mutex_unlock(&panel_lock);
-
+	FristSet_brightness = 0;
 	return 0;
 }
 
@@ -906,6 +934,12 @@ int sprd_panel_parse_lcddtb(struct device_node *lcd_node,
 	else
 		info->esd_check_period = 1000;
 
+	rc = of_property_read_u32(lcd_node, "sprd,esd-check-num", &val);
+	if (!rc)
+		info->esd_check_num = val;
+	else
+		info->esd_check_num = 1;
+
 	rc = of_property_read_u32(lcd_node, "sprd,esd-check-register", &val);
 	if (!rc)
 		info->esd_check_reg = val;
@@ -917,6 +951,11 @@ int sprd_panel_parse_lcddtb(struct device_node *lcd_node,
 		info->esd_check_val = val;
 	else
 		info->esd_check_val = 0x9C;
+
+	if(info->esd_check_num > 1)
+	{
+		of_parse_ESD_array(lcd_node, info);
+	}
 
 	if (of_property_read_bool(lcd_node, "sprd,use-dcs-write"))
 		info->use_dcs = true;
@@ -934,12 +973,19 @@ int sprd_panel_parse_lcddtb(struct device_node *lcd_node,
 	} else
 		DRM_ERROR("can't find sprd,initial-command property\n");
 
-	p = of_get_property(lcd_node, "sprd,sleep-in-command", &bytes);
+	p = of_get_property(lcd_node, "sprd,sleep-in-command-without-gesture", &bytes);
 	if (p) {
-		info->cmds[CMD_CODE_SLEEP_IN] = p;
-		info->cmds_len[CMD_CODE_SLEEP_IN] = bytes;
+		info->cmds[CMD_CODE_SLEEP_IN_WITHOUT_GESTURE] = p;
+		info->cmds_len[CMD_CODE_SLEEP_IN_WITHOUT_GESTURE] = bytes;
 	} else
-		DRM_ERROR("can't find sprd,sleep-in-command property\n");
+		DRM_ERROR("can't find sprd,sleep-in-command-without-gesture property\n");
+
+	p = of_get_property(lcd_node, "sprd,sleep-in-command-with-gesture", &bytes);
+	if (p) {
+		info->cmds[CMD_CODE_SLEEP_IN_WITH_GESTURE] = p;
+		info->cmds_len[CMD_CODE_SLEEP_IN_WITH_GESTURE] = bytes;
+	} else
+		DRM_ERROR("can't find sleep-in-command-with-gesture property\n");
 
 	p = of_get_property(lcd_node, "sprd,sleep-out-command", &bytes);
 	if (p) {
@@ -947,38 +993,6 @@ int sprd_panel_parse_lcddtb(struct device_node *lcd_node,
 		info->cmds_len[CMD_CODE_SLEEP_OUT] = bytes;
 	} else
 		DRM_ERROR("can't find sprd,sleep-out-command property\n");
-
-	p = of_get_property(lcd_node, "sprd,cabc-off-command", &bytes);
-	if (p) {
-	        info->cmds[CMD_CODE_CABC_OFF] = p;
-	        info->cmds_len[CMD_CODE_CABC_OFF] = bytes;
-	} else {
-	        DRM_ERROR("can't find sprd,cabc-off-command property\n");
-	}
-
-	p = of_get_property(lcd_node, "sprd,cabc-ui-command", &bytes);
-	if (p) {
-	        info->cmds[CMD_CODE_CABC_UI] = p;
-	        info->cmds_len[CMD_CODE_CABC_UI] = bytes;
-	} else {
-	        DRM_ERROR("can't find sprd,cabc-ui-command property\n");
-	}
-
-	p = of_get_property(lcd_node, "sprd,cabc-still-command", &bytes);
-	if (p) {
-	        info->cmds[CMD_CODE_CABC_STILL] = p;
-	        info->cmds_len[CMD_CODE_CABC_STILL] = bytes;
-	} else {
-	        DRM_ERROR("can't find sprd,cabc-still-command property\n");
-	}
-
-	p = of_get_property(lcd_node, "sprd,cabc-moving-command", &bytes);
-	if (p) {
-	        info->cmds[CMD_CODE_CABC_MOVING] = p;
-	        info->cmds_len[CMD_CODE_CABC_MOVING] = bytes;
-	} else {
-	        DRM_ERROR("can't find sprd,cabc-moving-command property\n");
-	}
 
 	rc = of_get_drm_display_mode(lcd_node, &info->mode, 0,
 				     OF_USE_NATIVE_MODE);
@@ -1088,7 +1102,7 @@ static int sprd_panel_probe(struct mipi_dsi_device *slave)
 
 	ret = sprd_oled_backlight_init(panel);
 	if (ret) {
-		DRM_ERROR("oled backlight init failed\n");
+		DRM_WARN("oled backlight init failed\n");
 		return ret;
 	}
 
@@ -1115,7 +1129,6 @@ static int sprd_panel_probe(struct mipi_dsi_device *slave)
 	panel->slave = slave;
 
 	sprd_panel_sysfs_init(&panel->dev);
-	oplus_display_private_api_init();
 	mipi_dsi_set_drvdata(slave, panel);
 
 	/*
@@ -1131,10 +1144,7 @@ static int sprd_panel_probe(struct mipi_dsi_device *slave)
 		panel->esd_work_pending = true;
 	}
 
-	panel->info.cabc_mode = CABC_MODE_OFF;
 	panel->is_enabled = true;
-	panel->is_shutdown = false;
-	hardwareinfo_set_prop(HARDWARE_LCD, lcd_name);
 
 	DRM_INFO("panel driver probe success\n");
 
@@ -1157,15 +1167,8 @@ static int sprd_panel_remove(struct mipi_dsi_device *slave)
 
 	drm_panel_detach(&panel->base);
 	drm_panel_remove(&panel->base);
-	oplus_display_private_api_exit();
-	return 0;
-}
 
-static void sprd_panel_shutdown(struct mipi_dsi_device *slave)
-{
-	struct sprd_panel *panel = mipi_dsi_get_drvdata(slave);
-	panel->is_shutdown = true;
-	DRM_INFO("%s()\n", __func__);
+	return 0;
 }
 
 static const struct of_device_id panel_of_match[] = {
@@ -1181,7 +1184,6 @@ static struct mipi_dsi_driver sprd_panel_driver = {
 	},
 	.probe = sprd_panel_probe,
 	.remove = sprd_panel_remove,
-	.shutdown = sprd_panel_shutdown,
 };
 module_mipi_dsi_driver(sprd_panel_driver);
 

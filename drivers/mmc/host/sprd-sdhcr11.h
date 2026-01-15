@@ -70,6 +70,7 @@ struct register_hotplug {
 #endif
 #define POLLING_STEP_SIZE (32) /*16KB*/
 #define POLLING_SAMPLE_NUM (BLOCK_MAX_SIZE / POLLING_STEP_SIZE + 1)
+
 struct polling_info {
 	int wait[POLLING_SAMPLE_NUM];
 	int count[POLLING_SAMPLE_NUM];

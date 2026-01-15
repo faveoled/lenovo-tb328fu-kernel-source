@@ -517,4 +517,5 @@ static struct i2c_driver bq24735_charger_driver = {
 module_i2c_driver(bq24735_charger_driver);
 
 MODULE_DESCRIPTION("bq24735 battery charging driver");
+MODULE_AUTHOR("Darbha Sriharsha <dsriharsha@nvidia.com>");
 MODULE_LICENSE("GPL v2");

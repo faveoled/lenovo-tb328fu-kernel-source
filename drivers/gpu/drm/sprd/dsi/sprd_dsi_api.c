@@ -14,7 +14,7 @@
 #include <linux/delay.h>
 
 #include "sprd_dsi_hal.h"
-
+extern const char *lcd_name;
 static u16 calc_bytes_per_pixel_x100(int coding)
 {
 	u16 Bpp_x100;
@@ -225,10 +225,7 @@ int sprd_dsi_dpi_video(struct sprd_dsi *dsi)
 	dsi_hal_dpi_frame_ack_en(dsi, ctx->frame_ack_en);
 	dsi_hal_dpi_color_coding(dsi, coding);
 	dsi_hal_dpi_video_burst_mode(dsi, ctx->burst_mode);
-	if (!dsi->phy->ctx.special_timing_mode)
-		dsi_hal_dpi_sig_delay(dsi, 95 * hline * ratio_x1000 / 100000);
-	else
-		dsi_hal_dpi_sig_delay(dsi, 80 * hline * ratio_x1000 / 100000);
+	dsi_hal_dpi_sig_delay(dsi, 95 * hline * ratio_x1000 / 100000);
 	dsi_hal_dpi_hline_time(dsi, hline * ratio_x1000 / 1000);
 	dsi_hal_dpi_hsync_time(dsi, vm->hsync_len * ratio_x1000 / 1000);
 	dsi_hal_dpi_hbp_time(dsi, vm->hback_porch * ratio_x1000 / 1000);
@@ -236,9 +233,7 @@ int sprd_dsi_dpi_video(struct sprd_dsi *dsi)
 	dsi_hal_dpi_vfp(dsi, vm->vfront_porch);
 	dsi_hal_dpi_vbp(dsi, vm->vback_porch);
 	dsi_hal_dpi_vsync(dsi, vm->vsync_len);
-	dsi_hal_vblk_cmd_trans_limit(dsi, 0x80);
-	if (!ctx->hporch_lp_disable)
-		dsi_hal_dpi_hporch_lp_en(dsi, 1);
+	dsi_hal_dpi_hporch_lp_en(dsi, 1);
 	dsi_hal_dpi_vporch_lp_en(dsi, 1);
 	dsi_hal_dpi_hsync_pol(dsi, 0);
 	dsi_hal_dpi_vsync_pol(dsi, 0);
@@ -402,7 +397,7 @@ int sprd_dsi_wr_pkt(struct sprd_dsi *dsi, u8 vc, u8 type,
 	if (vc > 3)
 		return -EINVAL;
 
-	/* 1st: for long packet, must config payload first */
+	/* 1st: for long packet, must config payload first 	*/
 	if (!dsi_hal_wait_tx_payload_fifo_empty(dsi))
 		return -1;
 
@@ -459,9 +454,9 @@ int sprd_dsi_rd_pkt(struct sprd_dsi *dsi, u8 vc, u8 type,
 		return -EINVAL;
 
 	/* 1st: send read command to peripheral */
-	if (!dsi_hal_wait_tx_cmd_fifo_empty(dsi))
+	if (!dsi_hal_wait_tx_cmd_fifo_empty(dsi)){
 		return -EINVAL;
-
+	}
 	dsi_hal_set_packet_header(dsi, vc, type, lsb_byte, msb_byte);
 
 	/* 2nd: wait peripheral response completed */

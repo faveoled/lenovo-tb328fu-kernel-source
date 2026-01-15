@@ -2,6 +2,7 @@
  * axp288_charger.c - X-power AXP288 PMIC Charger driver
  *
  * Copyright (C) 2014 Intel Corporation
+ * Author: Ramakrishna Pallala <ramakrishna.pallala@intel.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -919,5 +920,6 @@ static struct platform_driver axp288_charger_driver = {
 
 module_platform_driver(axp288_charger_driver);
 
+MODULE_AUTHOR("Ramakrishna Pallala <ramakrishna.pallala@intel.com>");
 MODULE_DESCRIPTION("X-power AXP288 Charger Driver");
 MODULE_LICENSE("GPL v2");

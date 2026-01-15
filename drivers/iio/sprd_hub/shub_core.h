@@ -19,6 +19,9 @@
 #define SHUB_NAME                   "sprd-sensor"
 #define SHUB_RD                   "shub_rd"
 #define SHUB_RD_NWU                   "shub_rd_nwu"
+#define SHUB_LIGHT_CALI_DATA_FILE    "/mnt/vendor/productinfo/sensor_calibration_data/light"
+#define SHUB_PROX_CALI_DATA_FILE    "/mnt/vendor/productinfo/sensor_calibration_data/proximity"
+#define SHUB_ACC_CALI_DATA_FILE    "/mnt/vendor/productinfo/sensor_calibration_data/acc"
 #define SHUB_SENSOR_NUM		7
 #define SHUB_NODATA                 0xff
 #define HOST_REQUEST_WRITE           0x74
@@ -31,14 +34,14 @@
 #define SIPC_PM_BUFID1             1
 #define SHUB_IIO_CHN_BITS             64
 /* light sensor calibrate min value is 280lux */
-#define LIGHT_SENSOR_MIN_VALUE  1
+#define LIGHT_SENSOR_MIN_VALUE  280
 /* light sensor calibrate max value is 520lux */
-#define LIGHT_SENSOR_MAX_VALUE  52000
+#define LIGHT_SENSOR_MAX_VALUE  520
 #define LIGHT_CALI_DATA_COUNT   5
 /* light sensor calibrate value is 400lux; Due to kernel seldom use
  * float data, so calibrate value multiply 10000
  */
-#define LIGHT_SENSOR_CALI_VALUE (1000 * 10000)
+#define LIGHT_SENSOR_CALI_VALUE (400 * 10000)
 /* prox sensor auto calibrate ground noise min value is 0 */
 #define PROX_SENSOR_MIN_VALUE   0
 
@@ -157,6 +160,21 @@ struct sensor_log_control {
 	u32 udata[MAX_SENSOR_LOG_CTL_FLAG_LEN];
 };
 
+struct als_cali_data {
+	int lux_coeff;
+	int ch0_coeff;
+	int ch1_coeff;
+	int ch2_coeff;
+	int ch3_coeff;
+	int ch4_coeff;
+};
+
+struct customer_data_get {
+	u8 type;
+	u8 customer_data[30];
+	u8 length;
+};
+
 struct shub_data {
 	struct platform_device *sensor_pdev;
 	enum shub_mode mcu_mode;
@@ -203,6 +221,7 @@ struct shub_data {
 	void (*cm4_read_callback)(struct shub_data *sensor,
 				  enum shub_subtype_id subtype,
 				  u8 *buff, u32 len);
+	void (*dynamic_read)(struct shub_data *sensor);
 	struct sensor_log_control log_control;
 	struct workqueue_struct *driver_wq;
 	struct delayed_work time_sync_work;
@@ -213,6 +232,8 @@ struct shub_data {
 	struct notifier_block shub_reboot_notifier;
 	int is_sensorhub;
 	u8 cm4_operate_data[6];
+	struct customer_data_get dynamic_data_get;
+	struct als_cali_data alsCoeff;
 };
 
 extern struct shub_data *g_sensor;
@@ -254,6 +275,28 @@ struct acc_gyro_cali_data {
 	int y_raw_data;
 	int z_raw_data;
 };
+
+struct sensor_event {
+    uint8_t Cmd;
+    uint8_t Length;
+    uint16_t HandleID;
+    union {
+        uint8_t udata[4];
+        struct {
+            int8_t status;
+            int8_t type;
+            };
+        };
+        union {
+            float fdata[6];
+            struct {
+                float uncalib[3];
+                float bias[3];
+            };
+        };
+    int64_t timestamp;
+};
+
 
 #pragma pack(1)
 struct prox_cali_data {

@@ -28,6 +28,7 @@
 #include <drm/drm_vblank.h>
 #include <uapi/drm/drm_mode.h>
 #include "disp_lib.h"
+#include "sprd_dsi.h"
 
 #define DRM_MODE_BLEND_PREMULTI		2
 #define DRM_MODE_BLEND_COVERAGE		1
@@ -208,8 +209,8 @@ struct sprd_dpu {
 	struct dpu_glb_ops *glb;
 	struct drm_display_mode *mode;
 	struct sprd_dpu_layer *layers;
-	struct sprd_dsi *dsi;
 	u8 pending_planes;
+	struct sprd_dsi *dsi;
 };
 
 extern struct list_head dpu_core_head;

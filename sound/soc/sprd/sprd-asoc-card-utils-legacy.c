@@ -63,6 +63,34 @@ static const char *func_name[BOARD_FUNC_MAX] = {
 
 /* Hook utils */
 static struct sprd_asoc_ext_hook *ext_hook;
+/*select main mic or aux mic*/
+static int mic_sel = 0; // default main mic
+
+int sprd_mic_sel_put(
+    struct snd_kcontrol *kcontrol,
+    struct snd_ctl_elem_value *ucontrol)
+{
+    int id;
+    sp_asoc_pr_info("%s put 0x%lx\n",
+        __func__, ucontrol->value.integer.value[0]);
+    id = ucontrol->value.integer.value[0];
+
+    mic_sel = id;
+    sp_asoc_pr_info("%s mic_sel %d\n",
+        __func__, mic_sel);
+
+    return 0;
+}
+
+int sprd_mic_sel_get(
+    struct snd_kcontrol *kcontrol,
+    struct snd_ctl_elem_value *ucontrol)
+{
+    sp_asoc_pr_info("%s get %d\n",
+        __func__, mic_sel);
+    ucontrol->value.integer.value[0] = mic_sel;
+    return 0;
+}
 
 int sprd_asoc_ext_hook_register(struct sprd_asoc_ext_hook *hook)
 {
@@ -156,6 +184,7 @@ static int board_headphone_event(struct snd_soc_dapm_widget *w,
 
 	sp_asoc_pr_dbg("Headphone Switch %s\n", STR_ON_OFF(on));
 	board_ext_enable(w->dapm->card, on, BOARD_FUNC_HP);
+
 	return 0;
 }
 
@@ -271,6 +300,13 @@ static int board_dig_fm_event(struct snd_soc_dapm_widget *w,
 
 	return 0;
 }
+
+int sprd_ext_pa_disbale_put(
+    struct snd_kcontrol *kcontrol,
+    struct snd_ctl_elem_value *ucontrol);
+int sprd_ext_pa_disbale_get(
+    struct snd_kcontrol *kcontrol,
+    struct snd_ctl_elem_value *ucontrol);
 
 static const struct snd_soc_dapm_widget _sprd_asoc_card_widgets[] = {
 	SND_SOC_DAPM_MIC(BOARD_MIC_JACK, board_main_mic_event),
@@ -492,6 +528,10 @@ static const struct snd_kcontrol_new _sprd_asoc_card_controls[] = {
 	/*smart amp boost function select*/
 	SOC_ENUM_EXT("SmartAmp Boost", smartamp_boost_enum, smartamp_boost_get,
 				smartamp_boost_set),
+	SOC_SINGLE_EXT("ext_pa_disbale", 0, 0, INT_MAX, 0,
+        sprd_ext_pa_disbale_get, sprd_ext_pa_disbale_put),
+	SOC_SINGLE_EXT("mic_sel", 0, 0, INT_MAX, 0,
+        sprd_mic_sel_get, sprd_mic_sel_put),
 };
 
 struct sprd_array_size sprd_asoc_card_controls = {

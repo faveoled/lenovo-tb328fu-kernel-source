@@ -3,6 +3,8 @@
  * power supplies (AC/USB) connected to main and backup batteries,
  * and optional builtin charger.
  *
+ * Copyright © 2007 Anton Vorontsov <cbou@mail.ru>
+ *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
@@ -513,4 +515,5 @@ static struct platform_driver pda_power_pdrv = {
 module_platform_driver(pda_power_pdrv);
 
 MODULE_LICENSE("GPL");
+MODULE_AUTHOR("Anton Vorontsov <cbou@mail.ru>");
 MODULE_ALIAS("platform:pda-power");

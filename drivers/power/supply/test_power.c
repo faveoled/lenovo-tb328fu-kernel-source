@@ -1,8 +1,11 @@
 /*
  * Power supply driver for testing.
  *
+ * Copyright 2010  Anton Vorontsov <cbouatmailru@gmail.com>
+ *
  * Dynamic module parameter code from the Virtual Battery Driver
  * Copyright (C) 2008 Pylone, Inc.
+ * By: Masashi YOKOTA <yokota@pylone.jp>
  * Originally found here:
  * http://downloads.pylone.jp/src/virtual_battery/virtual_battery-0.0.1.tar.bz2
  *
@@ -526,4 +529,5 @@ module_param(battery_voltage, battery_voltage, 0644);
 MODULE_PARM_DESC(battery_voltage, "battery voltage (millivolts)");
 
 MODULE_DESCRIPTION("Power supply driver for testing");
+MODULE_AUTHOR("Anton Vorontsov <cbouatmailru@gmail.com>");
 MODULE_LICENSE("GPL");

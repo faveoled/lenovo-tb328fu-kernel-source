@@ -25,21 +25,18 @@
 
 enum {
 	CMD_CODE_INIT = 0,
-	CMD_CODE_SLEEP_IN,
+	CMD_CODE_SLEEP_IN_WITHOUT_GESTURE,
 	CMD_CODE_SLEEP_OUT,
 	CMD_OLED_BRIGHTNESS,
 	CMD_OLED_REG_LOCK,
 	CMD_OLED_REG_UNLOCK,
-	CMD_CODE_CABC_OFF,
-	CMD_CODE_CABC_UI,
-	CMD_CODE_CABC_STILL,
-	CMD_CODE_CABC_MOVING,
 	CMD_CODE_RESERVED0,
 	CMD_CODE_RESERVED1,
 	CMD_CODE_RESERVED2,
 	CMD_CODE_RESERVED3,
 	CMD_CODE_RESERVED4,
 	CMD_CODE_RESERVED5,
+	CMD_CODE_SLEEP_IN_WITH_GESTURE,
 	CMD_CODE_MAX,
 };
 
@@ -53,15 +50,6 @@ enum {
 enum {
 	ESD_MODE_REG_CHECK,
 	ESD_MODE_TE_CHECK,
-	ESD_MODE_SPECIAL_CHECK,
-};
-
-enum {
-       CABC_MODE_OFF,
-       CABC_MODE_UI,
-       CABC_MODE_STILL,
-       CABC_MODE_MOVING,
-       CABC_MODE_MAX,
 };
 
 struct dsi_cmd_desc {
@@ -76,12 +64,19 @@ struct gpio_timing {
 	u32 level;
 	u32 delay;
 };
+struct ESD_Reg_Val {
+	u32 reg;
+	u32 val;
+};
 
 struct reset_sequence {
 	u32 items;
 	struct gpio_timing *timing;
 };
-
+struct ESD_check_DLC{
+	u32 items;
+	struct ESD_Reg_Val *esd_reg_val;
+};
 struct panel_info {
 	/* common parameters */
 	struct device_node *of_node;
@@ -91,24 +86,25 @@ struct panel_info {
 	struct gpio_desc *avdd_gpio;
 	struct gpio_desc *avee_gpio;
 	struct gpio_desc *reset_gpio;
+	struct gpio_desc *BL_gpio;
 	struct reset_sequence rst_on_seq;
 	struct reset_sequence rst_off_seq;
 	const void *cmds[CMD_CODE_MAX];
 	int cmds_len[CMD_CODE_MAX];
 
-	/* esd check parameters*/
 	bool esd_check_en;
 	u8 esd_check_mode;
 	u16 esd_check_period;
+	int esd_check_num;
 	u32 esd_check_reg;
 	u32 esd_check_val;
+	struct ESD_check_DLC esd_check[2];
 
 	/* MIPI DSI specific parameters */
 	u32 format;
 	u32 lanes;
 	u32 mode_flags;
 	bool use_dcs;
-	u32 cabc_mode;
 };
 
 struct sprd_panel {
@@ -121,7 +117,6 @@ struct sprd_panel {
 	struct delayed_work esd_work;
 	bool esd_work_pending;
 	bool is_enabled;
-	bool is_shutdown;
 };
 
 struct sprd_oled {
@@ -136,5 +131,4 @@ struct sprd_oled {
 int sprd_panel_parse_lcddtb(struct device_node *lcd_node,
 	struct sprd_panel *panel);
 
-extern void sprd_cabc_set_mode(struct sprd_panel *panel, unsigned int cabc_mode);
 #endif

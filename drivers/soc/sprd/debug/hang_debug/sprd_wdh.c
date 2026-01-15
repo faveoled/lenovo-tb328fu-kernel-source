@@ -38,6 +38,9 @@
 #include "../sysdump/sysdump64.h"
 #endif
 
+#undef pr_fmt
+#define pr_fmt(fmt) "sprd_wdh: " fmt
+
 #define MAX_CALLBACK_LEVEL  16
 #define SPRD_PRINT_BUF_LEN  524288
 #define SPRD_STACK_SIZE 256
@@ -60,6 +63,8 @@ static raw_spinlock_t sprd_wdh_wclock;
 static atomic_t sprd_enter_wdh;
 extern void sysdump_ipi(struct pt_regs *regs);
 extern unsigned long gic_get_gicd_base(void);
+extern unsigned int cpu_feed_mask;
+extern unsigned int cpu_feed_bitmap;
 
 char sprd_log_buf[SPRD_PRINT_BUF_LEN];
 static int log_buf_pos;
@@ -192,11 +197,11 @@ static int set_panic_debug_entry(unsigned long func_addr, unsigned long pgd)
 	int ret;
 	ret = svc_handle->dbg_ops.set_hang_hdl(func_addr, pgd);
 	if (ret) {
-		pr_err("%s: failed to set panic debug entry\n", __func__);
+		pr_err("failed to set panic debug entry\n");
 		return -EPERM;
 	}
 #endif
-	pr_emerg("%s func_addr = 0x%lx, pgd = 0x%lx\n", __func__, func_addr, pgd);
+	pr_emerg("func_addr = 0x%lx, pgd = 0x%lx\n", func_addr, pgd);
 	return 0;
 }
 
@@ -214,7 +219,7 @@ static unsigned long smcc_get_regs(enum smcc_regs_id id)
 	ret = svc_handle->dbg_ops.get_hang_ctx(id, &val);
 	if (ret) {
 		sprd_hang_debug_printf("%s: failed to get cpu statue\n", __func__);
-		return -EPERM;
+		return EPERM;
 	}
 #endif
 	return val;
@@ -226,8 +231,8 @@ static unsigned short smcc_get_cpu_state(void)
 	int ret;
 	ret = svc_handle->dbg_ops.get_hang_ctx(CPU_STATUS, &val);
 	if (ret) {
-		pr_err("%s: failed to get cpu statue\n", __func__);
-		return -EPERM;
+		pr_err("failed to get cpu statue\n");
+		return EPERM;
 	}
 #endif
 	return val;
@@ -381,7 +386,7 @@ static void cpu_stack_data_dump(int cpu)
 	print_step(cpu);
 }
 
-static int get_gicc_regs(struct gicc_data *c)
+static void get_gicc_regs(struct gicc_data *c)
 {
 #ifdef CONFIG_ARM64
 	c->gicc_ctlr = (u32)read_sysreg_s(SYS_ICC_CTLR_EL1);
@@ -405,7 +410,6 @@ static int get_gicc_regs(struct gicc_data *c)
 	c->gicc_iidr = 0;
 #endif
 	isb();
-	return 0;
 }
 
 static int get_gicd_regs(struct gicd_data *d)
@@ -429,26 +433,23 @@ static int get_gicd_regs(struct gicd_data *d)
 
 static void gicc_regs_value_dump(int cpu)
 {
-	int ret;
-
 	if (!gicc_regs) {
 		sprd_hang_debug_printf("gicc_regs allocation failed\n");
 		return;
 	}
 
-	ret = get_gicc_regs(gicc_regs);
-	if (!ret) {
-		sprd_hang_debug_printf("gicc_ctlr  : %08x, gicc_pmr : %08x, gicc_bpr : %08x\n",
-			     gicc_regs->gicc_ctlr, gicc_regs->gicc_pmr, gicc_regs->gicc_bpr);
-		sprd_hang_debug_printf("gicc_rpr  : %08x, gicc_hppir0 : %08x, gicc_abpr : %08x\n",
-			     gicc_regs->gicc_rpr, gicc_regs->gicc_hppir, gicc_regs->gicc_abpr);
-		sprd_hang_debug_printf("gicc_aiar  : %08x, gicc_ahppir : %08x, gicc_statusr : %08x\n",
-			     gicc_regs->gicc_aiar, gicc_regs->gicc_ahppir, gicc_regs->gicc_statusr);
-		sprd_hang_debug_printf("gicc_iidr  : %08x\n", gicc_regs->gicc_iidr);
+	get_gicc_regs(gicc_regs);
 
-		wdh_step[cpu] = SPRD_HANG_DUMP_GICC_REGS;
-		print_step(cpu);
-	}
+	sprd_hang_debug_printf("gicc_ctlr  : %08x, gicc_pmr : %08x, gicc_bpr : %08x\n",
+		     gicc_regs->gicc_ctlr, gicc_regs->gicc_pmr, gicc_regs->gicc_bpr);
+	sprd_hang_debug_printf("gicc_rpr  : %08x, gicc_hppir0 : %08x, gicc_abpr : %08x\n",
+		     gicc_regs->gicc_rpr, gicc_regs->gicc_hppir, gicc_regs->gicc_abpr);
+	sprd_hang_debug_printf("gicc_aiar  : %08x, gicc_ahppir : %08x, gicc_statusr : %08x\n",
+		     gicc_regs->gicc_aiar, gicc_regs->gicc_ahppir, gicc_regs->gicc_statusr);
+	sprd_hang_debug_printf("gicc_iidr  : %08x\n", gicc_regs->gicc_iidr);
+
+	wdh_step[cpu] = SPRD_HANG_DUMP_GICC_REGS;
+	print_step(cpu);
 }
 
 static void gicd_regs_value_dump(int cpu)
@@ -460,8 +461,8 @@ static void gicd_regs_value_dump(int cpu)
 		return;
 	}
 	for (i = 0; i < 7; i++) {
-		gicd_regs->gicd_igroup[i] = smcc_get_regs(GICD_IGROUP_0 + i);
-		gicd_regs->gicd_igrpmodr[i] = smcc_get_regs(GICD_IGRPMODR_0 + i);
+		gicd_regs->gicd_igroup[i] = (u32)smcc_get_regs(GICD_IGROUP_0 + i);
+		gicd_regs->gicd_igrpmodr[i] = (u32)smcc_get_regs(GICD_IGRPMODR_0 + i);
 	}
 
 	ret = get_gicd_regs(gicd_regs);
@@ -567,6 +568,10 @@ asmlinkage __visible void wdh_atf_entry(struct pt_regs *data)
 	wdh_step[cpu] = SPRD_HANG_DUMP_ENTER;
 	sprd_hang_debug_printf("---wdh enter!---\n");
 
+	sprd_hang_debug_printf("cpu_feed_mask:0x%04x cpu_feed_bitmap:0x%04x\n",
+			       (unsigned int)cpu_feed_mask,
+			       (unsigned int)cpu_feed_bitmap);
+
 	oops_in_progress = 1;
 	pregs = &cpu_context[cpu];
 	*pregs = *data;
@@ -645,7 +650,7 @@ static int sprd_wdh_atf_init(void)
 
 	svc_handle = sprd_sip_svc_get_handle();
 	if (!svc_handle) {
-		pr_err("%s: failed to get svc handle\n", __func__);
+		pr_err("failed to get svc handle\n");
 		return -ENODEV;
 	}
 
@@ -656,8 +661,9 @@ static int sprd_wdh_atf_init(void)
 		0
 #endif
 	);
+
 	if (ret)
-		pr_emerg("%s init ATF el1_entry_for_wdh error[%d]\n", __func__, ret);
+		pr_emerg("init ATF el1_entry_for_wdh error[%d]\n", ret);
 
 	gicc_regs = kmalloc(sizeof(struct gicc_data), GFP_KERNEL);
 	gicd_regs = kmalloc(sizeof(struct gicd_data), GFP_KERNEL);

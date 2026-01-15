@@ -34,7 +34,6 @@
 #include <linux/wait.h>
 #include <linux/mfd/syscon.h>
 #include <linux/regmap.h>
-#include <linux/tp_usb_notifier.h>
 
 #include "musb_core.h"
 #include "sprd_musbhsdma.h"
@@ -81,10 +80,10 @@ struct sprd_glue {
 	u32		usb_pub_slp_poll_offset;
 	u32		usb_pub_slp_poll_mask;
 	bool		suspending;
+	bool		retry_charger_detect;
 };
 
 static int boot_charging;
-static int tp_usb_flag = 0;
 
 static void sprd_musb_enable(struct musb *musb)
 {
@@ -146,6 +145,22 @@ static irqreturn_t sprd_musb_interrupt(int irq, void *__hci)
 
 
 	spin_lock(&glue->lock);
+
+	if (glue->retry_charger_detect) {
+		spin_unlock(&glue->lock);
+		mask8 = musb_readb(musb->mregs, MUSB_POWER);
+		mask8 &= ~MUSB_POWER_SOFTCONN;
+		musb_writeb(musb->mregs, MUSB_POWER, mask8);
+		dev_err(musb->controller,
+			"interrupt status: 0x%x 0x%x - 0x%x 0x%x - 0x%x 0%x\n",
+			 musb_readb(musb->mregs, MUSB_INTRUSBE),
+			 musb_readb(musb->mregs, MUSB_INTRUSB),
+			 musb_readw(musb->mregs, MUSB_INTRTXE),
+			 musb_readw(musb->mregs, MUSB_INTRTX),
+			 musb_readw(musb->mregs, MUSB_INTRRXE),
+			 musb_readw(musb->mregs, MUSB_INTRRX));
+		return retval;
+	}
 
 	if (glue->suspending) {
 		spin_unlock(&glue->lock);
@@ -511,12 +526,6 @@ static int musb_sprd_vbus_notifier(struct notifier_block *nb,
 			return 0;
 		}
 
-		//tp in usb mode
-		if(tp_usb_flag == 0){
-			tp_usb_notifier_call_chain(1,NULL);
-			tp_usb_flag = 1;
-		}
-
 		glue->vbus_active = 1;
 		glue->wq_mode = USB_DR_MODE_PERIPHERAL;
 		queue_work(system_unbound_wq, &glue->work);
@@ -530,12 +539,6 @@ static int musb_sprd_vbus_notifier(struct notifier_block *nb,
 			dev_info(glue->dev,
 				"ignore device disconnect detected from VBUS GPIO.\n");
 			return 0;
-		}
-
-		//tp out usb mode
-		if(tp_usb_flag == 1){
-			tp_usb_notifier_call_chain(0,NULL);
-			tp_usb_flag = 0;
 		}
 
 		glue->vbus_active = 0;
@@ -654,10 +657,56 @@ static int musb_sprd_suspend_child(struct device *dev, void *data)
 	return 0;
 }
 
+static enum usb_charger_type
+musb_sprd_retry_charger_detect(struct sprd_glue *glue)
+{
+	enum usb_charger_type type = UNKNOWN_TYPE;
+	struct usb_phy *usb_phy = glue->xceiv;
+	struct musb *musb = platform_get_drvdata(glue->musb);
+	unsigned long flags;
+	u8 pwr;
+
+	dev_dbg(glue->dev, "%s enter\n", __func__);
+	spin_lock_irqsave(&glue->lock, flags);
+	glue->retry_charger_detect = true;
+	spin_unlock_irqrestore(&glue->lock, flags);
+	if (!clk_prepare_enable(glue->clk)) {
+		usb_phy_init(glue->xceiv);
+		musb_writeb(musb->mregs, MUSB_INTRUSBE, 0);
+		musb_writeb(musb->mregs, MUSB_INTRTXE, 0);
+		musb_writeb(musb->mregs, MUSB_INTRRXE, 0);
+		pwr = musb_readb(musb->mregs, MUSB_POWER);
+		pwr |= MUSB_POWER_SOFTCONN;
+		musb_writeb(musb->mregs, MUSB_POWER, pwr);
+
+		type = usb_phy->retry_charger_detect(glue->xceiv);
+
+		pwr = musb_readb(musb->mregs, MUSB_POWER);
+		pwr &= ~MUSB_POWER_SOFTCONN;
+		musb_writeb(musb->mregs, MUSB_POWER, pwr);
+		/*  flush pending interrupts */
+		spin_lock_irqsave(&glue->lock, flags);
+		glue->retry_charger_detect = false;
+		spin_unlock_irqrestore(&glue->lock, flags);
+		musb_readb(musb->mregs, MUSB_INTRUSB);
+		musb_readw(musb->mregs, MUSB_INTRTXE);
+		usb_phy_shutdown(glue->xceiv);
+		clk_disable_unprepare(glue->clk);
+	}
+	return type;
+}
+
 static bool musb_sprd_is_connect_host(struct sprd_glue *glue)
 {
 	struct usb_phy *usb_phy = glue->xceiv;
 	enum usb_charger_type type = usb_phy->charger_detect(usb_phy);
+
+	dev_dbg(glue->dev, "%s type = %d\n", __func__, (int)type);
+
+	if ((type == UNKNOWN_TYPE||type==FLOAT_TYPE) && usb_phy->retry_charger_detect) {
+		if (extcon_get_state(glue->edev, EXTCON_USB))
+			type = musb_sprd_retry_charger_detect(glue);
+	}
 
 	if (type == SDP_TYPE || type == CDP_TYPE)
 		return true;

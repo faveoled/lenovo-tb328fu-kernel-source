@@ -239,9 +239,8 @@ static inline bool mmc_op_multi(u32 opcode)
  * EXT_CSD fields
  */
 
-
 #define EXT_CSD_CMDQ_MODE_EN		15	/* R/W */
-#define EXT_CSD_FFU_STATUS		26	/* R */
+#define EXT_CSD_FFU_STATUS			26	/* R */
 #define EXT_CSD_MODE_OPERATION_CODES	29	/* W */
 #define EXT_CSD_MODE_CONFIG		30	/* R/W */
 #define EXT_CSD_FLUSH_CACHE		32      /* W */
@@ -309,7 +308,7 @@ static inline bool mmc_op_multi(u32 opcode)
 #define EXT_CSD_NUM_OF_FW_SEC_PROG	302	/* RO */
 #define EXT_CSD_CMDQ_DEPTH		307	/* RO */
 #define EXT_CSD_CMDQ_SUPPORT		308	/* RO */
-#define EXT_CSD_FFU_ARG			487	/* RO, 4 bytes */
+#define EXT_CSD_FFU_ARG				487	/* RO, 4 bytes */
 #define EXT_CSD_OPERATION_CODE_TIMEOUT	491	/* RO */
 #define EXT_CSD_FFU_FEATURES		492	/* RO */
 #define EXT_CSD_SUPPORTED_MODE		493	/* RO */
@@ -447,5 +446,5 @@ static inline bool mmc_op_multi(u32 opcode)
 #define MMC_TRIM_ARGS			0x00008001
 
 #define mmc_driver_type_mask(n)		(1 << (n))
-int mmc_init_card(struct mmc_host *host, u32 ocr,struct mmc_card *oldcard);
+int mmc_init_card(struct mmc_host *host, u32 ocr, struct mmc_card *oldcard);
 #endif /* LINUX_MMC_MMC_H */

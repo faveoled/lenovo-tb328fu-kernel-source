@@ -1,6 +1,8 @@
 /*
  * Driver for the TI bq24190 battery charger.
  *
+ * Author: Mark A. Greer <mgreer@animalcreek.com>
+ *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
@@ -2062,4 +2064,5 @@ static struct i2c_driver bq24190_driver = {
 module_i2c_driver(bq24190_driver);
 
 MODULE_LICENSE("GPL");
+MODULE_AUTHOR("Mark A. Greer <mgreer@animalcreek.com>");
 MODULE_DESCRIPTION("TI BQ24190 Charger Driver");

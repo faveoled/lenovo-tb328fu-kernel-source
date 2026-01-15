@@ -204,6 +204,7 @@ static struct platform_driver ltc3651_charger_driver = {
 
 module_platform_driver(ltc3651_charger_driver);
 
+MODULE_AUTHOR("Mike Looijmans <mike.looijmans@topic.nl>");
 MODULE_DESCRIPTION("Driver for LTC3651 charger");
 MODULE_LICENSE("GPL");
 MODULE_ALIAS("platform:ltc3651-charger");

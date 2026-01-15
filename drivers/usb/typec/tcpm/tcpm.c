@@ -286,6 +286,8 @@ struct tcpm_port {
 	unsigned int nr_src_pdo;
 	u32 snk_pdo[PDO_MAX_OBJECTS];
 	unsigned int nr_snk_pdo;
+	u32 snk_default_pdo[PDO_MAX_OBJECTS];
+	unsigned int nr_snk_default_pdo;
 	u32 snk_vdo[VDO_MAX_OBJECTS];
 	unsigned int nr_snk_vdo;
 
@@ -2877,9 +2879,7 @@ static void run_state_machine(struct tcpm_port *port)
 			tcpm_set_state(port, AUDIO_ACC_ATTACHED,
 				       PD_T_CC_DEBOUNCE);
 		else if (tcpm_port_is_source(port))
-			tcpm_set_state(port,
-				       tcpm_try_snk(port) ? SNK_TRY
-							  : SRC_ATTACHED,
+			tcpm_set_state(port, SRC_ATTACHED,
 				       PD_T_CC_DEBOUNCE);
 		break;
 
@@ -2941,7 +2941,7 @@ static void run_state_machine(struct tcpm_port *port)
 
 	case SRC_ATTACHED:
 		ret = tcpm_src_attach(port);
-		tcpm_set_state(port, SRC_UNATTACHED,
+		tcpm_set_state(port, SRC_STARTUP,
 			       ret < 0 ? 0 : PD_T_PS_SOURCE_ON);
 		break;
 	case SRC_STARTUP:
@@ -3279,7 +3279,7 @@ static void run_state_machine(struct tcpm_port *port)
 		tcpm_set_vbus(port, true);
 		port->tcpc->set_pd_rx(port->tcpc, true);
 		tcpm_set_attached_state(port, true);
-		tcpm_set_state(port, SRC_UNATTACHED, PD_T_PS_SOURCE_ON);
+		tcpm_set_state(port, SRC_STARTUP, PD_T_PS_SOURCE_ON);
 		break;
 	case SNK_HARD_RESET_SINK_OFF:
 		memset(&port->pps_data, 0, sizeof(port->pps_data));
@@ -3293,7 +3293,8 @@ static void run_state_machine(struct tcpm_port *port)
 		 * If it doesn't toggle, transition to SNK_HARD_RESET_SINK_ON
 		 * directly after timeout.
 		 */
-		tcpm_set_state(port, SNK_HARD_RESET_SINK_ON, PD_T_SAFE_0V);
+		tcpm_set_state(port, SNK_HARD_RESET_SINK_ON,
+			       PD_T_SAFE_0V + PD_T_SRC_RECOVER_MAX + PD_T_SRC_TURN_ON);
 		break;
 	case SNK_HARD_RESET_WAIT_VBUS:
 		/* Assume we're disconnected if VBUS doesn't come back. */
@@ -3747,6 +3748,12 @@ static void _tcpm_cc_change(struct tcpm_port *port, enum typec_cc_status cc1,
 
 static void _tcpm_pd_vbus_on(struct tcpm_port *port)
 {
+	int i;
+
+	port->nr_snk_pdo = port->nr_snk_default_pdo;
+	for (i = 0; i < port->nr_snk_default_pdo; i++)
+		port->snk_pdo[i] = port->snk_default_pdo[i];
+
 	tcpm_log_force(port, "VBUS on");
 	port->vbus_present = true;
 	switch (port->state) {
@@ -4370,7 +4377,7 @@ static int tcpm_fw_get_caps(struct tcpm_port *port,
 			    struct fwnode_handle *fwnode)
 {
 	const char *cap_str;
-	int ret;
+	int ret, i;
 	u32 mw;
 
 	if (!fwnode)
@@ -4433,6 +4440,10 @@ sink:
 	if ((ret < 0) || tcpm_validate_caps(port, port->snk_pdo,
 					    port->nr_snk_pdo))
 		return -EINVAL;
+
+	port->nr_snk_default_pdo = port->nr_snk_pdo;
+	for (i = 0; i < port->nr_snk_default_pdo; i++)
+		port->snk_default_pdo[i] = port->snk_pdo[i];
 
 	if (fwnode_property_read_u32(fwnode, "op-sink-microwatt", &mw) < 0)
 		return -EINVAL;
@@ -4502,6 +4513,70 @@ int tcpm_update_sink_capabilities(struct tcpm_port *port, const u32 *pdo,
 	return 0;
 }
 EXPORT_SYMBOL_GPL(tcpm_update_sink_capabilities);
+
+void tcpm_get_source_capabilities(struct tcpm_port *port,
+				  struct adapter_power_cap *pd_source_cap)
+{
+	int i;
+
+	if (!port) {
+		pd_source_cap->nr_source_caps = 0;
+		pr_warn("port Null!!!\n");
+		return;
+	}
+
+	/* Clears SRC_CAP in the disconnected state */
+	if (tcpm_port_is_disconnected(port) &&
+	    (port->state == SRC_UNATTACHED || port->state == SNK_UNATTACHED ||
+	     port->state == DRP_TOGGLING)) {
+		for (i = 0; i < pd_source_cap->nr_source_caps; i++) {
+			pd_source_cap->max_mv[i] = 0;
+			pd_source_cap->min_mv[i] = 0;
+			pd_source_cap->ma[i] = 0;
+			pd_source_cap->pwr_mw_limit[i] = 0;
+		}
+		pd_source_cap->nr_source_caps = 0;
+		return;
+	}
+
+	pd_source_cap->nr_source_caps = port->nr_source_caps;
+	for (i = 0; i < port->nr_source_caps; i++) {
+		u32 pdo = port->source_caps[i];
+		enum pd_pdo_type type = pdo_type(pdo);
+
+		pd_source_cap->type[i] = type;
+		switch (type) {
+		case PDO_TYPE_FIXED:
+			pd_source_cap->max_mv[i] = pdo_fixed_voltage(pdo);
+			pd_source_cap->min_mv[i] = pd_source_cap->max_mv[i];
+			pd_source_cap->ma[i] = pdo_max_current(pdo);
+			break;
+		case PDO_TYPE_VAR:
+			pd_source_cap->max_mv[i] = pdo_max_voltage(pdo);
+			pd_source_cap->min_mv[i] = pdo_min_voltage(pdo);
+			pd_source_cap->ma[i] = pdo_max_current(pdo);
+			break;
+		case PDO_TYPE_BATT:
+			pd_source_cap->max_mv[i] = pdo_max_voltage(pdo);
+			pd_source_cap->min_mv[i] = pdo_min_voltage(pdo);
+			pd_source_cap->pwr_mw_limit[i] = pdo_max_power(pdo);
+			break;
+		case PDO_TYPE_APDO:
+			if (pdo_apdo_type(pdo) == APDO_TYPE_PPS) {
+				pd_source_cap->max_mv[i] = pdo_pps_apdo_max_voltage(pdo);
+				pd_source_cap->min_mv[i] = pdo_pps_apdo_min_voltage(pdo);
+				pd_source_cap->ma[i] = pdo_pps_apdo_max_current(pdo);
+			} else {
+				pd_source_cap->nr_source_caps = pd_source_cap->nr_source_caps - 1;
+			}
+			break;
+		default:
+			pd_source_cap->nr_source_caps = pd_source_cap->nr_source_caps - 1;
+			break;
+		}
+	}
+}
+EXPORT_SYMBOL_GPL(tcpm_get_source_capabilities);
 
 /* Power Supply access to expose source power information */
 enum tcpm_psy_online_states {
@@ -4752,6 +4827,24 @@ static int tcpm_copy_caps(struct tcpm_port *port,
 
 	return 0;
 }
+
+void tcpm_shutdown(struct tcpm_port *port)
+{
+	int ret;
+
+	if (port->pps_data.active) {
+		ret = tcpm_pps_activate(port, false);
+		if (ret) {
+			pr_err("failed to disbale pps at shutdown, ret = %d", ret);
+			return;
+		}
+	}
+
+	cancel_delayed_work_sync(&port->state_machine);
+	cancel_delayed_work_sync(&port->vdm_state_machine);
+	cancel_work_sync(&port->event_work);
+}
+EXPORT_SYMBOL_GPL(tcpm_shutdown);
 
 struct tcpm_port *tcpm_register_port(struct device *dev, struct tcpc_dev *tcpc)
 {

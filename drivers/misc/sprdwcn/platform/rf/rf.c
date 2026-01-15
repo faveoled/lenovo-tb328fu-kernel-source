@@ -634,7 +634,8 @@ int get_connectivity_config_param(struct wifi_config_t *p)
 	int ret;
 	char *path = VENDOR_WIFI_CONFIG_FILE;
 #ifdef CONFIG_SC2342_INTEG
-	if (wcn_get_aon_chip_id() == WCN_SHARKLE_CHIP_AD) {
+	if ((wcn_get_aon_chip_id() == WCN_SHARKLE_CHIP_AD) ||
+		(wcn_get_aon_chip_id() == WCN_SHARKL3_CHIP_22NM)) {
 		path = SYSTEM_WIFI_CONFIG_AD_FILE;
 		ret = wifi_nvm_parse(path, CONF_TYPE, (void *)p);
 		if (!ret)
@@ -654,6 +655,7 @@ int get_connectivity_config_param(struct wifi_config_t *p)
 		} else {
 			filp_close(file, NULL);
 			if ((wcn_get_aon_chip_id() != WCN_SHARKLE_CHIP_AD) &&
+			    (wcn_get_aon_chip_id() != WCN_SHARKL3_CHIP_22NM) &&
 			    (wcn_get_aon_chip_id() != WCN_PIKE2_CHIP_AB))
 				path = VENDOR_WIFI_CONFIG_FILE;
 		}
@@ -670,7 +672,8 @@ int get_connectivity_cali_param(struct wifi_cali_t *p)
 	char *path = VENDOR_WIFI_CALI_FILE;
 
 #ifdef CONFIG_SC2342_INTEG
-	if (wcn_get_aon_chip_id() == WCN_SHARKLE_CHIP_AD) {
+	if ((wcn_get_aon_chip_id() == WCN_SHARKLE_CHIP_AD) ||
+		(wcn_get_aon_chip_id() == WCN_SHARKL3_CHIP_22NM)) {
 		path = SYSTEM_WIFI_CALI_AD_FILE;
 		ret = wifi_nvm_parse(path, CALI_TYPE, (void *)p);
 		if (!ret)
@@ -690,6 +693,7 @@ int get_connectivity_cali_param(struct wifi_cali_t *p)
 		} else {
 			filp_close(file, NULL);
 			if ((wcn_get_aon_chip_id() != WCN_SHARKLE_CHIP_AD) &&
+			    (wcn_get_aon_chip_id() != WCN_SHARKL3_CHIP_22NM) &&
 			    (wcn_get_aon_chip_id() != WCN_PIKE2_CHIP_AB))
 				path = VENDOR_WIFI_CALI_FILE;
 		}

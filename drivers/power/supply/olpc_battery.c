@@ -1,6 +1,8 @@
 /*
  * Battery driver for One Laptop Per Child board.
  *
+ *	Copyright © 2006-2010  David Woodhouse <dwmw2@infradead.org>
+ *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
@@ -685,5 +687,6 @@ static struct platform_driver olpc_battery_driver = {
 
 module_platform_driver(olpc_battery_driver);
 
+MODULE_AUTHOR("David Woodhouse <dwmw2@infradead.org>");
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("Battery driver for One Laptop Per Child 'XO' machine");

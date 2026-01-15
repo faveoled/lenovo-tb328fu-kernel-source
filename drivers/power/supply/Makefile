@@ -64,7 +64,7 @@ obj-$(CONFIG_CHARGER_TWL4030)	+= twl4030_charger.o
 obj-$(CONFIG_CHARGER_LP8727)	+= lp8727_charger.o
 obj-$(CONFIG_CHARGER_LP8788)	+= lp8788-charger.o
 obj-$(CONFIG_CHARGER_GPIO)	+= gpio-charger.o
-obj-$(CONFIG_CHARGER_MANAGER)	+= charger-manager.o
+obj-$(CONFIG_CHARGER_MANAGER)	+= charger-manager.o sprd_vote.o
 obj-$(CONFIG_CHARGER_LTC3651)	+= ltc3651-charger.o
 obj-$(CONFIG_CHARGER_MAX14577)	+= max14577_charger.o
 obj-$(CONFIG_CHARGER_DETECTOR_MAX14656)	+= max14656_charger_detector.o
@@ -73,6 +73,7 @@ obj-$(CONFIG_CHARGER_MAX8997)	+= max8997_charger.o
 obj-$(CONFIG_CHARGER_MAX8998)	+= max8998_charger.o
 obj-$(CONFIG_CHARGER_QCOM_SMBB)	+= qcom_smbb.o
 obj-$(CONFIG_CHARGER_BQ2415X)	+= bq2415x_charger.o
+obj-$(CONFIG_CHARGER_AW32257)	+= aw32257_charger.o
 obj-$(CONFIG_CHARGER_BQ24190)	+= bq24190_charger.o
 obj-$(CONFIG_CHARGER_BQ24257)	+= bq24257_charger.o
 obj-$(CONFIG_CHARGER_BQ24735)	+= bq24735-charger.o
@@ -88,7 +89,18 @@ obj-$(CONFIG_FUEL_GAUGE_SC27XX)	+= sc27xx_fuel_gauge.o
 obj-$(CONFIG_CHARGER_SC2703)	+= sc2703-charger.o
 obj-$(CONFIG_CHARGER_FAN54015)	+= fan54015-charger.o
 obj-$(CONFIG_CHARGER_ETA6937)	+= eta6937-charger.o
-obj-$(CONFIG_CHARGER_BQ2560X)	+= bq2560x-charger.o
+obj-$(CONFIG_CHARGER_BQ2560X)	+= bq2560x-charger.o rt9471-charger.o
+obj-$(CONFIG_POGO_CHARGER)	+= pogo_charger.o
+obj-$(CONFIG_CHARGER_BQ25890)	+= bq25890_charger.o
+obj-$(CONFIG_CHARGER_BQ2597X)	+= bq2597x-charger.o
 obj-$(CONFIG_CHARGER_SC2720)	+= sc2720_charger.o
 obj-$(CONFIG_CHARGER_SC2721)	+= sc2721_charger.o
+obj-$(CONFIG_WIRELESS_CHARGER_NU1619)	+= nu1619_wireless_charger.o
+obj-$(CONFIG_WIRELESS_CHARGER_SY65153)	+= sy65153_wireless_charger.o
+obj-$(CONFIG_WIRELESS_CHARGE_PUMPS_CONVERTER_HL1506)	+= hl1506_charger.o
 obj-$(CONFIG_FAST_CHARGER_SC2730) += sc2730_fast_charger.o
+obj-$(CONFIG_CHARGER_BQ25910) += bq25910_charger.o
+
+ifeq ($(strip $(LCT_BUILD_TYPE)),FACTORY)
+ccflags-y := -DCONFIG_KERNEL_FACTORY_BUILD
+endif

@@ -54,7 +54,6 @@
 #include "queue.h"
 #include "../host/sprd-sdhcr11.h"
 #endif
-
 /* If the device is not responding */
 #define MMC_CORE_TIMEOUT_MS	(10 * 60 * 1000) /* 10 minute timeout */
 
@@ -480,6 +479,7 @@ int mmc_cmd_queue_thread(void *data)
 	u64 chk_time = 0;
 	struct sched_param scheduler_params = {0};
 	struct sprd_sdhc_host *sprd_host = mmc_priv(host);
+
 	/* Set as RT priority */
 	scheduler_params.sched_priority = 1;
 	sched_setscheduler(current, SCHED_FIFO, &scheduler_params);
@@ -526,6 +526,7 @@ reset_card:
 restore_task:
 				mmc_clear_data_list(host);
 				atomic_set(&host->cq_rdy_cnt, 0);
+
 				host->cur_rw_task = CQ_TASK_IDLE;
 				task_id = (done_mrq->cmd->arg >> 16) & 0x1f;
 				host->ops->request(host,

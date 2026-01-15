@@ -1231,10 +1231,6 @@ static void dpu_layer(struct dpu_context *ctx,
 		tos_msg.cmd = TA_REG_CLR;
 		disp_ca_write(&tos_msg, sizeof(tos_msg));
 		disp_ca_wait_response();
-
-		tos_msg.cmd = TA_FIREWALL_CLR;
-		disp_ca_write(&tos_msg, sizeof(tos_msg));
-		disp_ca_wait_response();
 	}
 
 	layer = &reg->layers[hwlayer->index];
@@ -1367,7 +1363,13 @@ static void dpu_flip(struct dpu_context *ctx,
 	if (ctx->if_type == SPRD_DISPC_IF_DPI) {
 		if (!ctx->is_stopped) {
 			reg->dpu_ctrl |= BIT(2);
-			dpu_wait_update_done(ctx);
+			if ((!layers[0].secure_en) && reg->dpu_secure) {
+				dpu_wait_update_done(ctx);
+				tos_msg.cmd = TA_FIREWALL_CLR;
+				disp_ca_write(&tos_msg, sizeof(tos_msg));
+				disp_ca_wait_response();
+			} else
+				dpu_wait_update_done(ctx);
 		}
 
 		reg->dpu_int_en |= DISPC_INT_ERR_MASK;
@@ -1628,7 +1630,7 @@ static void dpu_enhance_set(struct dpu_context *ctx, u32 id, void *param)
 	case ENHANCE_CFG_ID_CM:
 		memcpy(&cm_copy, param, sizeof(cm_copy));
 		memcpy(&cm, &cm_copy, sizeof(struct cm_cfg));
-		if (cabc_para.gain) {
+		if ((cabc_para.gain) && (cabc_disable == CABC_WORKING)) {
 			cm.coef00 = (cm.coef00 * cabc_para.gain) / 0x400;
 			cm.coef11 = (cm.coef11 * cabc_para.gain) / 0x400;
 			cm.coef22 = (cm.coef22 * cabc_para.gain) / 0x400;

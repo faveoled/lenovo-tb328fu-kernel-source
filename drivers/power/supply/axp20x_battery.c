@@ -1,6 +1,12 @@
 /*
  * Battery power supply driver for X-Powers AXP20X and AXP22X PMICs
  *
+ * Copyright 2016 Free Electrons NextThing Co.
+ *	Quentin Schulz <quentin.schulz@free-electrons.com>
+ *
+ * This driver is based on a previous upstreaming attempt by:
+ *	Bruno Prémont <bonbons@linux-vserver.org>
+ *
  * This file is subject to the terms and conditions of the GNU General
  * Public License. See the file "COPYING" in the main directory of this
  * archive for more details.
@@ -564,4 +570,5 @@ static struct platform_driver axp20x_batt_driver = {
 module_platform_driver(axp20x_batt_driver);
 
 MODULE_DESCRIPTION("Battery power supply driver for AXP20X and AXP22X PMICs");
+MODULE_AUTHOR("Quentin Schulz <quentin.schulz@free-electrons.com>");
 MODULE_LICENSE("GPL");

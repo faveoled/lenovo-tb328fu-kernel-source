@@ -68,6 +68,10 @@ static const u32 vbc_da_eq_profile_default[VBC_DA_EFFECT_PARAS_LEN] = {
 /* TODO the default register value */
 	/* REG_VBC_VBC_DAC_PATH_CTRL */
 	0x00000000,
+	/* REG_VBC_VBC_DAC_HP_CTRL
+	 * ninglei diff bit eq6, alc,
+	 * iis width 24(substitution vbc_da_iis_wd_sel)
+	 */
 	0x00000a7F,
 	/*ALC default para */
 	/* REG_VBC_VBC_DAC_ALC_CTRL0 */
@@ -1315,6 +1319,7 @@ static int vbc_try_fm_ad_src_set(struct vbc_codec_priv *vbc_codec,
 
 static int vbc_try_da_iismux_set(int port)
 {
+	/* ninglei why port ? (port + 1) : 0 */
 	return vbc_da_iismux_set(port ? (port + 1) : 0);
 }
 
@@ -1892,7 +1897,7 @@ static const struct snd_soc_dapm_widget vbc_codec_dapm_widgets[] = {
 static const struct snd_soc_dapm_route vbc_codec_intercon[] = {
 	/************************power********************************/
 	/* digital fm playback need to open DA Clk and DA power */
-	{"DFM", NULL, "VBC Power"},
+	{"DFM", NULL, "VBC Power"},	/*ninglei to check */
 
 	/********************** capture in  path in vbc ********************/
 	/* AD input route */
@@ -3492,6 +3497,13 @@ int vbc_close_fm_dggain(bool mute)
 						__func__, mute);
 	}
 	mutex_unlock(&g_vbc_codec->fm_mutex);
+
+	/* cut down the dggain of fm input */
+	/* ninglei sharkl bug? REG_VBC_VBC_ADC01_DG_CTRL dg is not for fm,
+	 * you should operate REG_VBC_VBC_DAC_ST_CTL0 dg bits
+	 * and REG_VBC_VBC_DAC_ST_CTL1 dg bits
+	 *return vbc_reg_update(REG_VBC_VBC_ADC01_DG_CTRL, 0x7F7F, 0x7F7F);
+	 */
 
 	return 0;
 }

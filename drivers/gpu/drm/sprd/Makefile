@@ -8,7 +8,7 @@ obj-y := sprd_drm.o \
 	sprd_dpu.o \
 	sprd_dsi.o \
 	sprd_dphy.o \
-	sprd_panel.o
+	sprd_panel.o \
 
 obj-y += dummy/dummy_crtc.o
 obj-y += dummy/dummy_connector.o
@@ -29,8 +29,12 @@ obj-y += sharkl5/
 obj-y += sharkl5Pro/
 obj-y += roc1/
 obj-y += qogirl6/
-obj-y += oplus_engine/
 
 obj-$(CONFIG_DRM_SPRD_GSP) += gsp/
 
+obj-$(CONFIG_COMPAT) += sprd_ioc32.o
+
 obj-$(CONFIG_DRM_SPRD_HDMI) += lt9611_i2c.o
+obj-y += Bias_Power_I2C.o
+obj-y += Backlight_Current_I2C.o
+

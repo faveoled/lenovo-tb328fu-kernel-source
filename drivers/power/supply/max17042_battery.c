@@ -3,6 +3,7 @@
  *  Note that Maxim 8966 and 8997 are mfd and this is its subdevice.
  *
  * Copyright (C) 2011 Samsung Electronics
+ * MyungJoo Ham <myungjoo.ham@samsung.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -1163,5 +1164,6 @@ static struct i2c_driver max17042_i2c_driver = {
 };
 module_i2c_driver(max17042_i2c_driver);
 
+MODULE_AUTHOR("MyungJoo Ham <myungjoo.ham@samsung.com>");
 MODULE_DESCRIPTION("MAX17042 Fuel Gauge");
 MODULE_LICENSE("GPL");

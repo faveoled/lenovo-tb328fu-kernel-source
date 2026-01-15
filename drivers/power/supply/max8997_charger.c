@@ -2,6 +2,7 @@
  * max8997_charger.c - Power supply consumer driver for the Maxim 8997/8966
  *
  *  Copyright (C) 2011 Samsung Electronics
+ *  MyungJoo Ham <myungjoo.ham@samsung.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -196,4 +197,5 @@ static void __exit max8997_battery_cleanup(void)
 module_exit(max8997_battery_cleanup);
 
 MODULE_DESCRIPTION("MAXIM 8997/8966 battery control driver");
+MODULE_AUTHOR("MyungJoo Ham <myungjoo.ham@samsung.com>");
 MODULE_LICENSE("GPL");

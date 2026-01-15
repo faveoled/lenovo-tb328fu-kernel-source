@@ -26,6 +26,7 @@
 #include <linux/power/sc2730-usb-charger.h>
 #include <dt-bindings/soc/sprd,sharkl5-mask.h>
 #include <dt-bindings/soc/sprd,sharkl5-regs.h>
+#include <linux/iio/consumer.h>
 
 struct sprd_hsphy {
 	struct device		*dev;
@@ -38,10 +39,32 @@ struct sprd_hsphy {
 	atomic_t		reset;
 	atomic_t		inited;
 	bool			is_host;
+	struct iio_channel	*dp;
+	struct iio_channel	*dm;
 };
 
 #define TUNEHSAMP_2_6MA		(3 << 25)
 #define TFREGRES_TUNE_VALUE	(0x14 << 19)
+#define FULLSPEED_USB33_TUNE		2700000
+#define SC2730_CHARGE_DET_FGU_CTRL	0x3A0
+#define SC2730_ADC_OFFSET		0x1800
+#define BIT_DP_DM_AUX_EN		BIT(1)
+#define BIT_DP_DM_BC_ENB		BIT(0)
+#define VOLT_LO_LIMIT			1200
+#define VOLT_HI_LIMIT			600
+
+
+static int boot_cali;
+static __init int sprd_hsphy_cali_mode(char *str)
+{
+	if (strcmp(str, "cali"))
+		boot_cali = 0;
+	else
+		boot_cali = 1;
+
+	return 0;
+}
+__setup("androidboot.mode=", sprd_hsphy_cali_mode);
 
 static inline void sprd_hsphy_reset_core(struct sprd_hsphy *phy)
 {
@@ -57,6 +80,63 @@ static inline void sprd_hsphy_reset_core(struct sprd_hsphy *phy)
 	usleep_range(20000, 30000);
 	regmap_update_bits(phy->hsphy_glb, REG_AON_APB_APB_RST1,
 		msk, 0);
+}
+
+static int sc2730_voltage_cali(int voltage)
+{
+	return voltage*3/2;
+}
+
+static enum usb_charger_type sprd_hsphy_retry_charger_detect(struct usb_phy *x)
+{
+	struct sprd_hsphy *phy = container_of(x, struct sprd_hsphy, phy);
+	enum usb_charger_type type = UNKNOWN_TYPE;
+	int dm_voltage, dp_voltage;
+	int cnt = 20;
+
+	if (!phy->dm || !phy->dp) {
+		dev_err(x->dev, " phy->dp:%p, phy->dm:%p\n",
+			phy->dp, phy->dm);
+		return UNKNOWN_TYPE;
+	}
+
+	regmap_update_bits(phy->pmic,
+		SC2730_ADC_OFFSET | SC2730_CHARGE_DET_FGU_CTRL,
+		BIT_DP_DM_AUX_EN | BIT_DP_DM_BC_ENB,
+		BIT_DP_DM_AUX_EN);
+
+	msleep(300);
+	iio_read_channel_processed(phy->dp, &dp_voltage);
+	dp_voltage = sc2730_voltage_cali(dp_voltage);
+	if (dp_voltage > VOLT_LO_LIMIT) {
+		do {
+			iio_read_channel_processed(phy->dm, &dm_voltage);
+			dm_voltage = sc2730_voltage_cali(dm_voltage);
+			if (dm_voltage > VOLT_LO_LIMIT) {
+				type = DCP_TYPE;
+				break;
+			}
+			msleep(100);
+			cnt--;
+			iio_read_channel_processed(phy->dp, &dp_voltage);
+			dp_voltage = sc2730_voltage_cali(dp_voltage);
+			if (dp_voltage  < VOLT_HI_LIMIT) {
+				type = SDP_TYPE;
+				break;
+			}
+		} while ((x->chg_state == USB_CHARGER_PRESENT) && cnt > 0);
+	}
+
+	regmap_update_bits(phy->pmic,
+		SC2730_ADC_OFFSET | SC2730_CHARGE_DET_FGU_CTRL,
+		BIT_DP_DM_AUX_EN | BIT_DP_DM_BC_ENB, 0);
+
+	dev_dbg(x->dev, "correct type is %x\n", type);
+	if (type != UNKNOWN_TYPE) {
+		x->chg_type = type;
+		schedule_work(&x->chg_work);
+	}
+	return type;
 }
 
 static int sprd_hsphy_reset(struct usb_phy *x)
@@ -198,7 +278,7 @@ static int sprd_hsphy_init(struct usb_phy *x)
 	ret |= regmap_update_bits(phy->ana_g2,
 		REG_ANLG_PHY_G2_ANALOG_USB20_USB20_UTMI_CTL1,
 		msk, reg);
-#if 0
+
 	reg = TUNEHSAMP_2_6MA;
 	msk = MASK_ANLG_PHY_G2_ANALOG_USB20_USB20_TUNEHSAMP;
 	ret |= regmap_update_bits(phy->ana_g2,
@@ -210,13 +290,7 @@ static int sprd_hsphy_init(struct usb_phy *x)
 	ret |= regmap_update_bits(phy->ana_g2,
 		REG_ANLG_PHY_G2_ANALOG_USB20_USB20_TRIMMING,
 		msk, reg);
-#else
-    reg = 0x0465dfc0;
-    msk = 0xFFFFFFFF;
-    ret |= regmap_update_bits(phy->ana_g2,
-        REG_ANLG_PHY_G2_ANALOG_USB20_USB20_TRIMMING,
-        msk, reg);
-#endif
+
 	if (!atomic_read(&phy->reset)) {
 		sprd_hsphy_reset_core(phy);
 		atomic_set(&phy->reset, 1);
@@ -374,6 +448,17 @@ static int sprd_hsphy_probe(struct platform_device *pdev)
 	if (!phy)
 		return -ENOMEM;
 
+	phy->dp = devm_iio_channel_get(dev, "dp");
+	phy->dm = devm_iio_channel_get(dev, "dm");
+	if (IS_ERR(phy->dp)) {
+		phy->dp = NULL;
+		dev_warn(dev, "failed to get dp or dm channel\n");
+	}
+	if (IS_ERR(phy->dm)) {
+		phy->dm = NULL;
+		dev_warn(dev, "failed to get dp or dm channel\n");
+	}
+
 	regmap_np = of_find_compatible_node(NULL, NULL, "sprd,sc27xx-syscon");
 	if (!regmap_np) {
 		dev_err(dev, "unable to get syscon node\n");
@@ -398,6 +483,11 @@ static int sprd_hsphy_probe(struct platform_device *pdev)
 	if (ret < 0) {
 		dev_err(dev, "unable to read ssphy vdd voltage\n");
 		return ret;
+	}
+
+	if (boot_cali) {
+		phy->vdd_vol = FULLSPEED_USB33_TUNE;
+		dev_info(dev, "calimode vdd_vol:%d\n", phy->vdd_vol);
 	}
 
 	phy->vdd = devm_regulator_get(dev, "vdd");
@@ -456,6 +546,7 @@ static int sprd_hsphy_probe(struct platform_device *pdev)
 	phy->phy.type = USB_PHY_TYPE_USB2;
 	phy->phy.vbus_nb.notifier_call = sprd_hsphy_vbus_notify;
 	phy->phy.charger_detect = sprd_hsphy_charger_detect;
+	phy->phy.retry_charger_detect = sprd_hsphy_retry_charger_detect;
 	otg->usb_phy = &phy->phy;
 
 	platform_set_drvdata(pdev, phy);

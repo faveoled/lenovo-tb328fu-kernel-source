@@ -26,7 +26,7 @@
 static uint8_t input_param[255];
 static uint8_t input_len;
 static uint8_t read_buf[64];
-static uint8_t lp_cmd_en;
+static uint8_t lp_cmd_en = true;
 
 static ssize_t phy_freq_store(struct device *dev,
 				struct device_attribute *attr,

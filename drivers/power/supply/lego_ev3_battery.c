@@ -1,6 +1,8 @@
 /*
  * Battery driver for LEGO MINDSTORMS EV3
  *
+ * Copyright (C) 2017 David Lechner <david@lechnology.com>
+ *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
@@ -222,4 +224,5 @@ static struct platform_driver lego_ev3_battery_driver = {
 module_platform_driver(lego_ev3_battery_driver);
 
 MODULE_LICENSE("GPL");
+MODULE_AUTHOR("David Lechner <david@lechnology.com>");
 MODULE_DESCRIPTION("LEGO MINDSTORMS EV3 Battery Driver");

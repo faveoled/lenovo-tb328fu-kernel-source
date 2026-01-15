@@ -42,6 +42,9 @@
 #define HUB_QUIRK_CHECK_PORT_AUTOSUSPEND	0x01
 #define HUB_QUIRK_DISABLE_AUTOSUSPEND		0x02
 
+char usb_product[20]={};
+char usb_speed[20]={};
+
 /* Protect struct usb_device->state and ->children members
  * Note: Both are also protected by ->dev.sem, except that ->state can
  * change to USB_STATE_NOTATTACHED even when the semaphore isn't held. */
@@ -2229,9 +2232,31 @@ static void announce_device(struct usb_device *udev)
 		udev->descriptor.iManufacturer,
 		udev->descriptor.iProduct,
 		udev->descriptor.iSerialNumber);
-	show_string(udev, "Product", udev->product);
-	show_string(udev, "Manufacturer", udev->manufacturer);
-	show_string(udev, "SerialNumber", udev->serial);
+	if(udev->product==NULL){
+		dev_info(&udev->dev, "=udev->product is null \n");
+	}
+	if(udev->manufacturer==NULL){
+		dev_info(&udev->dev, "=udev->manufacturer is null \n");
+	}
+	if(udev->serial==NULL){
+		dev_info(&udev->dev, "=udev->serial is null \n");
+	}
+	if(udev->product!=NULL){
+		show_string(udev, "Product", udev->product);
+		if(udev->manufacturer!=NULL){
+			show_string(udev, "Manufacturer", udev->manufacturer);
+		}
+		if(udev->serial!=NULL){
+			show_string(udev, "SerialNumber", udev->serial);
+		}
+		if(strstr(udev->product,"Hub ")&&(udev->speed<=USB_SPEED_FULL)){
+			strcpy(usb_product,"Hub ");
+			strcpy(usb_speed,usb_speed_string(udev->speed));
+			show_string(udev, "usb_product", usb_product);
+			show_string(udev, "usb_speed", usb_speed);
+		}
+	}
+
 }
 #else
 static inline void announce_device(struct usb_device *udev) { }

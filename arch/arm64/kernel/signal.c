@@ -580,10 +580,10 @@ static void setup_return(struct pt_regs *regs, struct k_sigaction *ka,
 	regs->regs[29] = (unsigned long)&user->next_frame->fp;
 	regs->pc = (unsigned long)ka->sa.sa_handler;
 
-	if (ka->sa.sa_flags & SA_RESTORER)
+	//if (ka->sa.sa_flags & SA_RESTORER)
 		sigtramp = ka->sa.sa_restorer;
-	else
-		sigtramp = VDSO_SYMBOL(current->mm->context.vdso, sigtramp);
+	//else
+		//sigtramp = VDSO_SYMBOL(current->mm->context.vdso, sigtramp);
 
 	regs->regs[30] = (unsigned long)sigtramp;
 }

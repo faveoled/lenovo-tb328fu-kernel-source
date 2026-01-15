@@ -12,7 +12,7 @@
 #define CID_MANFID_SANDISK_NEW	0x45
 #define CID_MANFID_KSI		0x70
 #define CID_MANFID_HYNIX	0x90
-
+#define OPERATION_CODES_TIMEOUT_MAX 0x17
 /*
  * Turn the cache ON/OFF.
  * Turning the cache OFF shall trigger flushing of the data
@@ -65,8 +65,7 @@ static int mmc_ffu_install(struct mmc_card *card, u8 *ext_csd)
 {
 	u32 timeout;
 	u8 set = 1;  //????
-	u8 retry=10;
-	u32 ffu_data_len;
+	u8 retry = 10;
 	int err;
 	u8 *ext_csd_new = NULL;
 	if ((card->cid.manfid == CID_MANFID_HYNIX) &&
@@ -76,8 +75,8 @@ static int mmc_ffu_install(struct mmc_card *card, u8 *ext_csd)
 	/*MODE_OPERATION_CODES not supported,Host sets MODE_CONFIG to
 	 *NORMAL and performs CMD0/HW Reset/Power cycle to install the new firmware
 	 */
-	if(!(ext_csd[EXT_CSD_FFU_FEATURES] & MMC_FFU_FEATURES)) {
-		err = mmc_switch(card,set,
+	if (!(ext_csd[EXT_CSD_FFU_FEATURES] & MMC_FFU_FEATURES)) {
+		err = mmc_switch(card, set,
 				EXT_CSD_MODE_CONFIG,
 				MMC_FFU_MODE_NORMAL, card->ext_csd.generic_cmd6_time);
 		if (err) {
@@ -91,21 +90,10 @@ static int mmc_ffu_install(struct mmc_card *card, u8 *ext_csd)
 	/*MODE_OPERATION_CODES
 	 *supported
 	 */
-	if(ext_csd[EXT_CSD_FFU_FEATURES] & MMC_FFU_FEATURES) {
-		ffu_data_len = ext_csd[EXT_CSD_NUM_OF_FW_SEC_PROG] |
-					ext_csd[EXT_CSD_NUM_OF_FW_SEC_PROG + 1] << 8 |
-					ext_csd[EXT_CSD_NUM_OF_FW_SEC_PROG + 2] << 16 |
-					ext_csd[EXT_CSD_NUM_OF_FW_SEC_PROG + 3] << 24;
-		if (!ffu_data_len) {
-			err = -EPERM;
-			pr_err("%sFFU:firmware were not downloaded into the device",
-				mmc_hostname(card->host));
-			mmc_ffu_restart(card);
-			goto exit;
-		}
+	if (ext_csd[EXT_CSD_FFU_FEATURES] & MMC_FFU_FEATURES) {
 		timeout = ext_csd[EXT_CSD_OPERATION_CODE_TIMEOUT];
-		if (timeout ==0 || timeout >0x17) {
-			timeout = 0x17;
+		if (timeout == 0 || timeout > OPERATION_CODES_TIMEOUT_MAX) {
+			timeout = OPERATION_CODES_TIMEOUT_MAX;
 			pr_err("%sFFU:use default OPERATION_CODES_TIMEOUT value",
 					mmc_hostname(card->host));
 		}
@@ -143,17 +131,17 @@ static int mmc_ffu_install(struct mmc_card *card, u8 *ext_csd)
 				mmc_hostname(card->host));
 		goto exit;
 	}
-	if(!ext_csd_new[EXT_CSD_FFU_STATUS]) {
+	if (!ext_csd_new[EXT_CSD_FFU_STATUS]) {
 		/*INSTALL SUCCESSD
 		 *check FIRMWARE_VERSION[261-254]
 		 */
-		pr_err("FFU:install success!!,%x",ext_csd_new[EXT_CSD_FFU_STATUS]);
-	}else {
+		pr_err("FFU:install success!!,%x", ext_csd_new[EXT_CSD_FFU_STATUS]);
+	} else {
 		pr_err("%sFFU:install failed!!,%x",
-				mmc_hostname(card->host),ext_csd_new[EXT_CSD_FFU_STATUS]);
+				mmc_hostname(card->host), ext_csd_new[EXT_CSD_FFU_STATUS]);
 		err = -EINVAL;
 	}
- exit:
+exit:
 	kfree(ext_csd_new);
 	return err;
 }
@@ -214,16 +202,15 @@ int mmc_ffu_wait_busy(struct mmc_card *card)
 	return ret;
 }
 
-static int host_download_fw(u8 *ext_csd,struct mmc_card *card,struct mmc_request *mrq)
+static int host_download_fw(u8 *ext_csd, struct mmc_card *card, struct mmc_request *mrq)
 {
 	struct mmc_command *cmd = mrq->cmd;
 	struct mmc_command stop = {0};
 	int err;
-	u32 ffu_data_len;
 	/*device reports to the host the value
 	 * that the host should set as an argument
 	 */
-	printk("ffu start download \r\n");
+	pr_debug("ffu start download \r\n");
 	cmd->arg = ext_csd[EXT_CSD_FFU_ARG] |
 			ext_csd[EXT_CSD_FFU_ARG + 1] << 8 |
 			ext_csd[EXT_CSD_FFU_ARG + 2] << 16 |
@@ -238,25 +225,12 @@ static int host_download_fw(u8 *ext_csd,struct mmc_card *card,struct mmc_request
 	/* device finished Programming State */
 	mmc_ffu_wait_busy(card);
 
-	err = mmc_get_ext_csd(card, &ext_csd);
-	if (err) {
-		mrq->cmd->error = -EINVAL;
-		pr_err("%sFFU: err:%d,111 ext_csd failed",
-				mmc_hostname(card->host), err);
-		return err;
-	}
-	ffu_data_len = ext_csd[EXT_CSD_NUM_OF_FW_SEC_PROG] |
-					ext_csd[EXT_CSD_NUM_OF_FW_SEC_PROG + 1] << 8 |
-					ext_csd[EXT_CSD_NUM_OF_FW_SEC_PROG + 2] << 16 |
-					ext_csd[EXT_CSD_NUM_OF_FW_SEC_PROG + 3] << 24;
-	printk("downloaded size is:%d",ffu_data_len);
 	err = mmc_ffu_check_result(mrq);
 	if (err) {
 		pr_err("%sFFU: err:%d,write Firmware bin FAILED,",
 				mmc_hostname(card->host), err);
-		return err;
 	}
-	return 0;
+	return err;
 }
 void mmc_wait_for_ffu_req(struct mmc_host *host, struct mmc_request *mrq)
 {
@@ -266,11 +240,10 @@ void mmc_wait_for_ffu_req(struct mmc_host *host, struct mmc_request *mrq)
 	int err;
 
 	/* check emmc device */
-	if(!mmc_card_mmc(card)) {
+	if (!mmc_card_mmc(card)) {
 		mrq->cmd->error = -EINVAL;
 		return;
 	}
-
 	/* read ext_csd */
 	err = mmc_get_ext_csd(card, &ext_csd);
 	if (err) {
@@ -298,8 +271,7 @@ void mmc_wait_for_ffu_req(struct mmc_host *host, struct mmc_request *mrq)
 	/* make sure emmc enable ffu function */
 	if (!(ext_csd[EXT_CSD_FW_CONFIG] & MMC_FFU_FW_CONFIG)) {
 			/* printk("FFU: FW updates enabled"); */
-	}
-	else {
+	} else {
 		err = mmc_switch(card, EXT_CSD_CMD_SET_NORMAL,
 				EXT_CSD_FW_CONFIG, MMC_FFU_ENABLE,
 				card->ext_csd.generic_cmd6_time);
@@ -330,7 +302,7 @@ void mmc_wait_for_ffu_req(struct mmc_host *host, struct mmc_request *mrq)
 	}
 
 	/* host download the firmware */
-	err = host_download_fw(ext_csd,card,mrq);
+	err = host_download_fw(ext_csd, card, mrq);
 	if (err) {
 		pr_err("%sFFU: err:%d,download fw fail\n",
 				mmc_hostname(card->host), err);
@@ -338,7 +310,7 @@ void mmc_wait_for_ffu_req(struct mmc_host *host, struct mmc_request *mrq)
 		goto exit;
 	}
 
-	err = mmc_ffu_install(card,ext_csd);
+	err = mmc_ffu_install(card, ext_csd);
 
 exit:
 	mrq->cmd->error = err;

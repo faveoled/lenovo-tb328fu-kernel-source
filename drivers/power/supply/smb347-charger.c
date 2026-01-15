@@ -3,6 +3,9 @@
  *
  * Copyright (C) 2011, Intel Corporation
  *
+ * Authors: Bruce E. Robertson <bruce.e.robertson@intel.com>
+ *          Mika Westerberg <mika.westerberg@linux.intel.com>
+ *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
@@ -1326,5 +1329,7 @@ static struct i2c_driver smb347_driver = {
 
 module_i2c_driver(smb347_driver);
 
+MODULE_AUTHOR("Bruce E. Robertson <bruce.e.robertson@intel.com>");
+MODULE_AUTHOR("Mika Westerberg <mika.westerberg@linux.intel.com>");
 MODULE_DESCRIPTION("SMB347 battery charger driver");
 MODULE_LICENSE("GPL");

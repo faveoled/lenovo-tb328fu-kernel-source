@@ -1,7 +1,12 @@
 /*
- * Battery measurement code 
+ * Battery measurement code for Ingenic JZ SOC.
+ *
+ * Copyright (C) 2009 Jiejing Zhang <kzjeef@gmail.com>
+ * Copyright (C) 2010, Lars-Peter Clausen <lars@metafoo.de>
  *
  * based on tosa_battery.c
+ *
+ * Copyright (C) 2008 Marek Vasut <marek.vasut@gmail.com>
 *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -416,4 +421,5 @@ module_platform_driver(jz_battery_driver);
 
 MODULE_ALIAS("platform:jz4740-battery");
 MODULE_LICENSE("GPL");
+MODULE_AUTHOR("Lars-Peter Clausen <lars@metafoo.de>");
 MODULE_DESCRIPTION("JZ4740 SoC battery driver");

@@ -1,6 +1,8 @@
 /*
  * Battery driver for CPCAP PMIC
  *
+ * Copyright (C) 2017 Tony Lindgren <tony@atomide.com>
+ *
  * Some parts of the code based on earlie Motorola mapphone Linux kernel
  * drivers:
  *
@@ -806,4 +808,5 @@ static struct platform_driver cpcap_battery_driver = {
 module_platform_driver(cpcap_battery_driver);
 
 MODULE_LICENSE("GPL v2");
+MODULE_AUTHOR("Tony Lindgren <tony@atomide.com>");
 MODULE_DESCRIPTION("CPCAP PMIC Battery Driver");

@@ -294,4 +294,5 @@ static struct platform_driver tps65217_charger_driver = {
 module_platform_driver(tps65217_charger_driver);
 
 MODULE_LICENSE("GPL v2");
+MODULE_AUTHOR("Enric Balletbo Serra <enric.balletbo@collabora.com>");
 MODULE_DESCRIPTION("TPS65217 battery charger driver");

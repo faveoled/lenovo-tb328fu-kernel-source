@@ -1,4 +1,5 @@
 /*
+ *  Copyright (C) 2010, Lars-Peter Clausen <lars@metafoo.de>
  *  Driver for chargers which report their online status through a GPIO pin
  *
  *  This program is free software; you can redistribute it and/or modify it
@@ -289,6 +290,7 @@ static struct platform_driver gpio_charger_driver = {
 
 module_platform_driver(gpio_charger_driver);
 
+MODULE_AUTHOR("Lars-Peter Clausen <lars@metafoo.de>");
 MODULE_DESCRIPTION("Driver for chargers which report their online status through a GPIO");
 MODULE_LICENSE("GPL");
 MODULE_ALIAS("platform:gpio-charger");

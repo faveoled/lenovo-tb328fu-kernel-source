@@ -5,6 +5,10 @@
  *
  * Author: Ryan Mallon
  *
+ * DS2786 added by Yulia Vilensky <vilensky@compulab.co.il>
+ *
+ * UEvent sending added by Evgeny Romanov <romanov@neurosoft.ru>
+ *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.

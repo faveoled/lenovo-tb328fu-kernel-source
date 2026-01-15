@@ -1,6 +1,11 @@
 /*
  *  Sysfs interface for the universal power supply monitor class
  *
+ *  Copyright © 2007  David Woodhouse <dwmw2@infradead.org>
+ *  Copyright © 2007  Anton Vorontsov <cbou@mail.ru>
+ *  Copyright © 2004  Szabolcs Gyurko
+ *  Copyright © 2003  Ian Molton <spyro@f2s.com>
+ *
  *  Modified: 2004, Oct     Szabolcs Gyurko
  *
  *  You may use this code as per GPL version 2
@@ -38,12 +43,15 @@ static struct device_attribute power_supply_attrs[];
 static const char * const power_supply_type_text[] = {
 	"Unknown", "Battery", "UPS", "Mains", "USB",
 	"USB_DCP", "USB_CDP", "USB_ACA", "USB_C",
-	"USB_PD", "USB_PD_DRP", "BrickID", "Wireless"
+	"USB_PD", "USB_PD_DRP", "BrickID", "SFCP_1P0",
+	"SFCP_2P0", "Wireless"
 };
 
 static const char * const power_supply_usb_type_text[] = {
 	"Unknown", "SDP", "DCP", "CDP", "ACA", "C",
-	"PD", "PD_DRP", "PD_PPS", "BrickID"
+	"PD", "PD_DRP", "PD_PPS", "BrickID", "SFCP_1P0",
+	"SFCP_2P0", "FLOAT"
+
 };
 
 static const char * const power_supply_status_text[] = {
@@ -226,6 +234,13 @@ static ssize_t power_supply_store_property(struct device *dev,
 static struct device_attribute power_supply_attrs[] = {
 	/* Properties of type `int' */
 	POWER_SUPPLY_ATTR(status),
+	POWER_SUPPLY_ATTR(bat_used_months),
+	POWER_SUPPLY_ATTR(bat_maintain_enable),
+	POWER_SUPPLY_ATTR(battery_connect),
+	POWER_SUPPLY_ATTR(charger_connect),
+	POWER_SUPPLY_ATTR(charger_rst_enable),
+	POWER_SUPPLY_ATTR(otg_product),
+	POWER_SUPPLY_ATTR(otg_product_status_clear),
 	POWER_SUPPLY_ATTR(charge_type),
 	POWER_SUPPLY_ATTR(health),
 	POWER_SUPPLY_ATTR(present),
@@ -233,6 +248,9 @@ static struct device_attribute power_supply_attrs[] = {
 	POWER_SUPPLY_ATTR(authentic),
 	POWER_SUPPLY_ATTR(technology),
 	POWER_SUPPLY_ATTR(cycle_count),
+	POWER_SUPPLY_ATTR(elapsed_time_month),
+	POWER_SUPPLY_ATTR(elapsed_time_day),
+	POWER_SUPPLY_ATTR(elapsed_time_hour),
 	POWER_SUPPLY_ATTR(voltage_max),
 	POWER_SUPPLY_ATTR(voltage_min),
 	POWER_SUPPLY_ATTR(voltage_max_design),
@@ -261,6 +279,7 @@ static struct device_attribute power_supply_attrs[] = {
 	POWER_SUPPLY_ATTR(charge_control_limit),
 	POWER_SUPPLY_ATTR(charge_control_limit_max),
 	POWER_SUPPLY_ATTR(input_current_limit),
+	POWER_SUPPLY_ATTR(input_current_now),
 	POWER_SUPPLY_ATTR(energy_full_design),
 	POWER_SUPPLY_ATTR(energy_empty_design),
 	POWER_SUPPLY_ATTR(energy_full),
@@ -285,19 +304,11 @@ static struct device_attribute power_supply_attrs[] = {
 	POWER_SUPPLY_ATTR(time_to_full_avg),
 	POWER_SUPPLY_ATTR(type),
 	POWER_SUPPLY_ATTR(usb_type),
+	POWER_SUPPLY_ATTR(wireless_type),
 	POWER_SUPPLY_ATTR(scope),
 	POWER_SUPPLY_ATTR(precharge_current),
 	POWER_SUPPLY_ATTR(charge_term_current),
 	POWER_SUPPLY_ATTR(calibrate),
-	POWER_SUPPLY_ATTR(StartCharging_Test),
-	POWER_SUPPLY_ATTR(StopCharging_Test),
-	POWER_SUPPLY_ATTR(battery_status_node),
-	POWER_SUPPLY_ATTR(set_ship_mode),
-	POWER_SUPPLY_ATTR(otg_online),
-	POWER_SUPPLY_ATTR(authenticate),
-	POWER_SUPPLY_ATTR(mmi_charging_enable),
-	POWER_SUPPLY_ATTR(hiz_status),
-	POWER_SUPPLY_ATTR(otg_switcher),/* 1:open otg;0:close otg! huoyanjun */
 	/* Local extensions */
 	POWER_SUPPLY_ATTR(usb_hc),
 	POWER_SUPPLY_ATTR(usb_otg),
@@ -306,8 +317,6 @@ static struct device_attribute power_supply_attrs[] = {
 	POWER_SUPPLY_ATTR(charge_counter_ext),
 	/* Properties of type `const char *' */
 	POWER_SUPPLY_ATTR(model_name),
-	POWER_SUPPLY_ATTR(battery_type),
-	POWER_SUPPLY_ATTR(real_type),
 	POWER_SUPPLY_ATTR(manufacturer),
 	POWER_SUPPLY_ATTR(serial_number),
 };
@@ -404,10 +413,6 @@ int power_supply_uevent(struct device *dev, struct kobj_uevent_env *env)
 		char *line;
 
 		attr = &power_supply_attrs[psy->desc->properties[j]];
-
-		if ((psy->desc->properties[j] == POWER_SUPPLY_PROP_STOPCHARGING_TEST)
-			|| (psy->desc->properties[j] == POWER_SUPPLY_PROP_STARTCHARGING_TEST))
-			continue;
 
 		ret = power_supply_show_property(dev, attr, prop_buf);
 		if (ret == -ENODEV || ret == -ENODATA) {

@@ -1360,6 +1360,7 @@ static int sprd_codec_ldo_on(struct sprd_codec_priv *sprd_codec)
 	atomic_inc(&sprd_codec->ldo_refcount);
 	if (atomic_read(&sprd_codec->ldo_refcount) == 1) {
 		sp_asoc_pr_dbg("LDO ON!\n");
+		/* peng: why do we disable hmic_bias sleep here? */
 		if (*regu)
 			regulator_set_mode(*regu, REGULATOR_MODE_NORMAL);
 		arch_audio_codec_analog_enable();
@@ -1422,6 +1423,7 @@ static int sprd_codec_digital_open(struct snd_soc_codec *codec)
 	snd_soc_update_bits(codec, SOC_REG(AUD_DAC_SDM_L), 0xFFFF, 0X9999);
 	snd_soc_update_bits(codec, SOC_REG(AUD_DAC_SDM_H), 0xFF, 0x1);
 
+	/*peng.lee added this according to janus.li's email*/
 	snd_soc_update_bits(codec, SOC_REG(AUD_SDM_CTL0), 0xFFFF, 0);
 
 	/* Set the left/right clock selection. */

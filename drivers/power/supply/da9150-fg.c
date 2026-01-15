@@ -3,6 +3,8 @@
  *
  * Copyright (c) 2015 Dialog Semiconductor
  *
+ * Author: Adam Thomson <Adam.Thomson.Opensource@diasemi.com>
+ *
  * This program is free software; you can redistribute  it and/or modify it
  * under  the terms of  the GNU General  Public License as published by the
  * Free Software Foundation;  either version 2 of the  License, or (at your
@@ -573,4 +575,5 @@ static struct platform_driver da9150_fg_driver = {
 module_platform_driver(da9150_fg_driver);
 
 MODULE_DESCRIPTION("Fuel-Gauge Driver for DA9150");
+MODULE_AUTHOR("Adam Thomson <Adam.Thomson.Opensource@diasemi.com>");
 MODULE_LICENSE("GPL");

@@ -4,6 +4,7 @@
  * Copyright (C) 2008 Google, Inc.
  * Copyright (C) 2012 Intel, Inc.
  * Copyright (C) 2013 Intel, Inc.
+ * Author: Mike Lockwood <lockwood@android.com>
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -250,5 +251,6 @@ static struct platform_driver goldfish_battery_device = {
 };
 module_platform_driver(goldfish_battery_device);
 
+MODULE_AUTHOR("Mike Lockwood lockwood@android.com");
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("Battery driver for the Goldfish emulator");
